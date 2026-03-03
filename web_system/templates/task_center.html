@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件生成管理中心 - 智能文档生成系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 25px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .header-actions a,
+        .header-actions button {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+            text-decoration: none;
+        }
+
+        .header-actions button:hover,
+        .header-actions a:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .search-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .search-bar input {
+            flex: 1;
+            min-width: 200px;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .search-bar select {
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            min-width: 150px;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .task-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        .task-table th,
+        .task-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .task-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .task-table td {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .task-table tr:hover {
+            background: #f8f9ff;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-processing,
+        .status-parsing_file,
+        .status-generating_ai,
+        .status-creating_doc {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-cancelled {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 0 4px;
+        }
+
+        .progress-bar .progress {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .progress-text {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .pagination button {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .pagination button:hover:not(:disabled) {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pagination .active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        /* 详情面板 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-size: 18px;
+            color: #333;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .modal-close:hover {
+            color: #333;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .detail-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .detail-item label {
+            display: block;
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 5px;
+        }
+
+        .detail-item .value {
+            font-size: 14px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .detail-full {
+            grid-column: 1 / -1;
+        }
+
+        .timeline {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .timeline h4 {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .timeline-item {
+            display: flex;
+            gap: 15px;
+            padding: 10px 0;
+            border-left: 2px solid #ddd;
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -6px;
+            top: 15px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #667eea;
+        }
+
+        .timeline-item.completed::before {
+            background: #27ae60;
+        }
+
+        .timeline-item .time {
+            font-size: 12px;
+            color: #999;
+            min-width: 150px;
+        }
+
+        .timeline-item .event {
+            font-size: 13px;
+            color: #333;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        .refresh-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+
+        .refresh-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .refresh-btn.spinning {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-state {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 文件生成管理中心</h1>
+            <div class="header-actions">
+                <a href="/">🏠 返回首页</a>
+                <button onclick="refreshTaskList()">🔄 刷新</button>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="search-bar">
+                <input type="text" id="searchInput" placeholder="搜索文件名称或任务 ID...">
+                <select id="statusFilter">
+                    <option value="">全部状态</option>
+                    <option value="pending">等待中</option>
+                    <option value="processing">处理中</option>
+                    <option value="parsing_file">解析文件中</option>
+                    <option value="generating_ai">AI 生成中</option>
+                    <option value="creating_doc">生成文档中</option>
+                    <option value="completed">已完成</option>
+                    <option value="failed">失败</option>
+                    <option value="cancelled">已取消</option>
+                </select>
+                <button class="btn btn-primary" onclick="searchTasks()">🔍 搜索</button>
+                <button class="btn btn-secondary" onclick="resetSearch()">重置</button>
+            </div>
+
+            <div id="taskListContainer">
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                    <p>正在加载任务列表...</p>
+                </div>
+            </div>
+
+            <div class="pagination" id="pagination"></div>
+        </div>
+    </div>
+
+    <!-- 详情面板 -->
+    <div class="modal" id="detailModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📋 任务详情</h3>
+                <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="detailContent">
+                <!-- 详情内容动态生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 刷新按钮 -->
+    <button class="refresh-btn" id="refreshBtn" onclick="refreshTaskList()" title="刷新列表">
+        🔄
+    </button>
+
+    <script>
+        let currentPage = 1;
+        const pageSize = 10;
+        let refreshTimer = null;
+
+        // 状态映射
+        const STATUS_MAP = {
+            'pending': { text: '等待中', class: 'status-pending' },
+            'processing': { text: '处理中', class: 'status-processing' },
+            'parsing_file': { text: '解析文件中', class: 'status-parsing_file' },
+            'generating_ai': { text: 'AI 生成中', class: 'status-generating_ai' },
+            'creating_doc': { text: '生成文档中', class: 'status-creating_doc' },
+            'completed': { text: '已完成', class: 'status-completed' },
+            'failed': { text: '失败', class: 'status-failed' },
+            'cancelled': { text: '已取消', class: 'status-cancelled' }
+        };
+
+        // 模型名称映射
+        const MODEL_MAP = {
+            'qwen-max': '通义千问-Max',
+            'qwen-plus': '通义千问-Plus',
+            'qwen-turbo': '通义千问-Turbo',
+            'glm-4': 'GLM-4',
+            'glm-3-turbo': 'GLM-3-Turbo',
+            'kimi-latest': 'Kimi',
+            'mini-max': 'MiniMax'
+        };
+
+        // 模板名称映射
+        const TEMPLATE_MAP = {
+            'future_community': '未来社区可行性研究报告',
+            'general_project': '通用项目可行性研究报告',
+            'smart_community': '智慧社区建设方案',
+            'business_plan': '商业计划书',
+            'project_proposal': '项目建议书',
+            'funding_application': '资金申请报告',
+            'social_stability': '社会稳定风险评估报告'
+        };
+
+        // 加载任务列表
+        async function loadTaskList(page = 1) {
+            currentPage = page;
+            const container = document.getElementById('taskListContainer');
+            container.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>正在加载...</p></div>';
+
+            try {
+                const keyword = document.getElementById('searchInput').value;
+                const status = document.getElementById('statusFilter').value;
+                
+                let url = `/api/task/list?page=${page}&page_size=${pageSize}`;
+                if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
+                if (status) url += `&status=${status}`;
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.success) {
+                    renderTaskList(data.tasks, data.total);
+                    renderPagination(data.total, page);
+                } else {
+                    container.innerHTML = '<div class="empty-state"><p>加载失败</p></div>';
+                }
+            } catch (error) {
+                container.innerHTML = '<div class="empty-state"><p>加载失败：' + error.message + '</p></div>';
+            }
+        }
+
+        // 渲染任务列表
+        function renderTaskList(tasks, total) {
+            const container = document.getElementById('taskListContainer');
+
+            if (tasks.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">📭</div>
+                        <p>暂无任务记录</p>
+                        <p style="margin-top: 10px; font-size: 13px;">
+                            <a href="/" style="color: #667eea;">去创建第一个任务</a>
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `
+                <table class="task-table">
+                    <thead>
+                        <tr>
+                            <th>文件名称</th>
+                            <th>报告类型</th>
+                            <th>AI 模型</th>
+                            <th>开始时间</th>
+                            <th>状态</th>
+                            <th>进度</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            tasks.forEach(task => {
+                const statusInfo = STATUS_MAP[task.status] || { text: task.status, class: '' };
+                const modelName = MODEL_MAP[task.model] || task.model || '-';
+                const templateName = TEMPLATE_MAP[task.template_type] || task.template_type || '-';
+                const filename = task.output_filename || task.task_id.substring(0, 8) + '...';
+                const startTime = task.started_at || task.created_at || '-';
+
+                html += `
+                    <tr>
+                        <td>
+                            <strong>${filename}</strong>
+                            ${task.output_filename ? 
+                                `<a href="/api/download/${task.output_filename}" style="display:block;margin-top:5px;color:#667eea;font-size:12px;">📥 下载</a>` : 
+                                ''}
+                        </td>
+                        <td>${templateName}</td>
+                        <td>${modelName}</td>
+                        <td>${startTime}</td>
+                        <td><span class="status-badge ${statusInfo.class}">${statusInfo.text}</span></td>
+                        <td style="width: 150px;">
+                            <div class="progress-bar">
+                                <div class="progress" style="width: ${task.progress}%"></div>
+                            </div>
+                            <div class="progress-text">${task.progress}% - ${task.message || ''}</div>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="showTaskDetail('${task.task_id}')">详情</button>
+                            ${task.status === 'pending' || task.status === 'processing' ? 
+                                `<button class="btn btn-sm btn-danger" onclick="cancelTask('${task.task_id}')">取消</button>` : 
+                                ''}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        // 渲染分页
+        function renderPagination(total, current) {
+            const totalPages = Math.ceil(total / pageSize);
+            const container = document.getElementById('pagination');
+
+            if (totalPages <= 1) {
+                container.innerHTML = '';
+                return;
+            }
+
+            let html = `
+                <button ${current === 1 ? 'disabled' : ''} onclick="loadTaskList(${current - 1})">上一页</button>
+            `;
+
+            for (let i = 1; i <= totalPages; i++) {
+                if (i === 1 || i === totalPages || (i >= current - 2 && i <= current + 2)) {
+                    html += `<button class="${i === current ? 'active' : ''}" onclick="loadTaskList(${i})">${i}</button>`;
+                } else if (i === current - 3 || i === current + 3) {
+                    html += `<button disabled>...</button>`;
+                }
+            }
+
+            html += `
+                <button ${current === totalPages ? 'disabled' : ''} onclick="loadTaskList(${current + 1})">下一页</button>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        // 搜索任务
+        function searchTasks() {
+            loadTaskList(1);
+        }
+
+        // 重置搜索
+        function resetSearch() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('statusFilter').value = '';
+            loadTaskList(1);
+        }
+
+        // 刷新列表
+        function refreshTaskList() {
+            const btn = document.getElementById('refreshBtn');
+            btn.classList.add('spinning');
+            setTimeout(() => btn.classList.remove('spinning'), 1000);
+            loadTaskList(currentPage);
+        }
+
+        // 显示任务详情
+        async function showTaskDetail(taskId) {
+            const modal = document.getElementById('detailModal');
+            const content = document.getElementById('detailContent');
+            
+            content.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>正在加载详情...</p></div>';
+            modal.classList.add('show');
+
+            try {
+                const response = await fetch(`/api/task/status/${taskId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    renderTaskDetail(data.task);
+                    // 如果任务还在进行中，启动轮询
+                    if (data.task.status === 'pending' || data.task.status === 'processing' ||
+                        data.task.status === 'parsing_file' || data.task.status === 'generating_ai' ||
+                        data.task.status === 'creating_doc') {
+                        startDetailPolling(taskId);
+                    }
+                } else {
+                    content.innerHTML = '<p>加载失败</p>';
+                }
+            } catch (error) {
+                content.innerHTML = '<p>加载失败：' + error.message + '</p>';
+            }
+        }
+
+        // 渲染任务详情
+        function renderTaskDetail(task) {
+            const content = document.getElementById('detailContent');
+            const statusInfo = STATUS_MAP[task.status] || { text: task.status, class: '' };
+            const modelName = MODEL_MAP[task.model] || task.model || '-';
+            const templateName = TEMPLATE_MAP[task.template_type] || task.template_type || '-';
+
+            // 生成章节步骤 HTML
+            let chapterStepsHtml = '';
+            if (task.chapter_steps && task.chapter_steps.length > 0) {
+                chapterStepsHtml = `
+                    <div class="timeline" style="margin-top: 20px;">
+                        <h4>📑 章节生成进度</h4>
+                        ${task.chapter_steps.map(step => {
+                            const stepStatusMap = {
+                                'pending': { text: '等待中', class: 'status-pending' },
+                                'generating': { text: '生成中', class: 'status-processing' },
+                                'completed': { text: '已完成', class: 'status-completed' },
+                                'failed': { text: '失败', class: 'status-failed' }
+                            };
+                            const stepStatus = stepStatusMap[step.status] || { text: step.status, class: '' };
+                            const isCompleted = step.status === 'completed';
+                            const isGenerating = step.status === 'generating';
+                            return `
+                                <div class="timeline-item ${isCompleted ? 'completed' : ''} ${isGenerating ? 'generating' : ''}">
+                                    <div class="time">${step.started_at || (step.status === 'pending' ? '-' : step.started_at)}</div>
+                                    <div class="event">
+                                        <strong>第${step.chapter_index + 1}章：${step.chapter_title}</strong>
+                                        <span class="status-badge ${stepStatus.class}" style="margin-left: 8px;">${stepStatus.text}</span>
+                                        ${step.message ? `<div style="font-size: 12px; color: #999; margin-top: 4px;">${step.message}</div>` : ''}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            }
+
+            // 生成操作按钮
+            let actionButtonsHtml = '';
+            if (task.pending_confirmation) {
+                actionButtonsHtml = `
+                    <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #f39c12;">
+                        <p style="margin-bottom: 10px; color: #856404;"><strong>⏸ 等待确认</strong>：第 ${task.completed_chapters.length} 章已生成完成，请预览后确认是否继续生成下一章</p>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-primary" onclick="previewDocument('${task.task_id}')">👁 预览当前文档</button>
+                            <button class="btn btn-success" onclick="continueGeneration('${task.task_id}')">✓ 确认继续</button>
+                            <button class="btn btn-danger" onclick="cancelTask('${task.task_id}')">✕ 取消任务</button>
+                        </div>
+                    </div>
+                `;
+            } else if (task.partial_filename || task.output_filename) {
+                actionButtonsHtml = `
+                    <div style="margin-top: 20px; text-align: center;">
+                        <button class="btn btn-primary" onclick="previewDocument('${task.task_id}')" style="margin-right: 10px;">👁 预览文档</button>
+                        ${task.output_filename ? `
+                            <a href="/api/download/${task.output_filename}" class="btn btn-success" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
+                                📥 下载生成的文档
+                            </a>
+                        ` : (task.partial_filename ? `
+                            <a href="/api/download/${task.partial_filename}" class="btn btn-success" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
+                                📥 下载当前进度文档
+                            </a>
+                        ` : '')}
+                    </div>
+                `;
+            }
+
+            content.innerHTML = `
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <label>任务 ID</label>
+                        <div class="value">${task.task_id}</div>
+                    </div>
+                    <div class="detail-item">
+                        <label>文件名称</label>
+                        <div class="value">${task.output_filename || task.partial_filename || '生成中...'}</div>
+                    </div>
+                    <div class="detail-item">
+                        <label>报告类型</label>
+                        <div class="value">${templateName}</div>
+                    </div>
+                    <div class="detail-item">
+                        <label>AI 模型</label>
+                        <div class="value">${modelName}</div>
+                    </div>
+                    <div class="detail-item">
+                        <label>当前状态</label>
+                        <div class="value"><span class="status-badge ${statusInfo.class}">${statusInfo.text}</span></div>
+                    </div>
+                    <div class="detail-item">
+                        <label>生成进度</label>
+                        <div class="value">${task.progress}%</div>
+                    </div>
+                    <div class="detail-item detail-full">
+                        <label>当前消息</label>
+                        <div class="value">${task.message || '-'}</div>
+                    </div>
+                    ${task.completed_chapters && task.completed_chapters.length > 0 ? `
+                    <div class="detail-item detail-full">
+                        <label>已完成章节</label>
+                        <div class="value" style="font-size: 13px; color: #666;">${task.completed_chapters.join('、')}</div>
+                    </div>
+                    ` : ''}
+                    <div class="detail-item">
+                        <label>创建时间</label>
+                        <div class="value">${task.created_at || '-'}</div>
+                    </div>
+                    <div class="detail-item">
+                        <label>开始时间</label>
+                        <div class="value">${task.started_at || '-'}</div>
+                    </div>
+                    <div class="detail-item">
+                        <label>完成时间</label>
+                        <div class="value">${task.completed_at || '-'}</div>
+                    </div>
+                    ${task.error_message ? `
+                    <div class="detail-item detail-full">
+                        <label>错误信息</label>
+                        <div class="value" style="color: #e74c3c;">${task.error_message}</div>
+                    </div>
+                    ` : ''}
+                </div>
+
+                <div class="timeline">
+                    <h4>📅 处理时间线</h4>
+                    <div class="timeline-item ${task.created_at ? 'completed' : ''}">
+                        <div class="time">${task.created_at || '-'}</div>
+                        <div class="event">任务创建</div>
+                    </div>
+                    <div class="timeline-item ${task.started_at ? 'completed' : ''}">
+                        <div class="time">${task.started_at || '-'}</div>
+                        <div class="event">开始处理</div>
+                    </div>
+                    ${task.chapter_steps && task.chapter_steps.length > 0 ? `
+                    <div class="timeline-item completed">
+                        <div class="time">${task.started_at || '-'}</div>
+                        <div class="event">开始生成章节内容</div>
+                    </div>
+                    ` : ''}
+                    <div class="timeline-item ${task.completed_at && task.status === 'completed' ? 'completed' : ''}">
+                        <div class="time">${task.completed_at || '-'}</div>
+                        <div class="event">${task.status === 'completed' ? '生成完成' : (task.status === 'failed' ? '生成失败' : (task.status === 'cancelled' ? '已取消' : '处理中'))}</div>
+                    </div>
+                </div>
+
+                ${chapterStepsHtml}
+                ${actionButtonsHtml}
+            `;
+        }
+
+        // 轮询详情更新
+        let detailPollingTimer = null;
+        function startDetailPolling(taskId) {
+            if (detailPollingTimer) clearInterval(detailPollingTimer);
+            
+            detailPollingTimer = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/task/status/${taskId}`);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        renderTaskDetail(data.task);
+                        
+                        // 如果任务已完成/失败/取消，停止轮询
+                        if (data.task.status === 'completed' || 
+                            data.task.status === 'failed' || 
+                            data.task.status === 'cancelled') {
+                            stopDetailPolling();
+                        }
+                    }
+                } catch (error) {
+                    console.error('轮询失败:', error);
+                }
+            }, 2000); // 每 2 秒轮询一次
+        }
+
+        function stopDetailPolling() {
+            if (detailPollingTimer) {
+                clearInterval(detailPollingTimer);
+                detailPollingTimer = null;
+            }
+        }
+
+        // 关闭详情面板
+        function closeDetailModal() {
+            document.getElementById('detailModal').classList.remove('show');
+            stopDetailPolling();
+        }
+
+        // 取消任务
+        async function cancelTask(taskId) {
+            if (!confirm('确定要取消这个任务吗？')) return;
+
+            try {
+                const response = await fetch(`/api/task/cancel/${taskId}`, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('任务已取消');
+                    loadTaskList(currentPage);
+                } else {
+                    alert('取消失败：' + data.message);
+                }
+            } catch (error) {
+                alert('取消失败：' + error.message);
+            }
+        }
+
+        // 关闭弹窗（点击背景）
+        document.getElementById('detailModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeDetailModal();
+            }
+        });
+
+        // 预览文档
+        function previewDocument(taskId) {
+            window.open(`/api/task/preview/${taskId}`, '_blank');
+        }
+
+        // 继续生成下一章
+        async function continueGeneration(taskId) {
+            try {
+                const response = await fetch(`/api/task/continue/${taskId}`, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('已确认，继续生成下一章');
+                    // 立即刷新详情
+                    const statusResponse = await fetch(`/api/task/status/${taskId}`);
+                    const statusData = await statusResponse.json();
+                    if (statusData.success) {
+                        renderTaskDetail(statusData.task);
+                    }
+                } else {
+                    alert('确认失败：' + data.message);
+                }
+            } catch (error) {
+                alert('确认失败：' + error.message);
+            }
+        }
+
+        // 页面加载时获取任务列表
+        loadTaskList(1);
+
+        // 自动刷新（每 10 秒）
+        setInterval(() => {
+            // 只刷新处理中的任务
+            const hasProcessing = document.querySelector('.status-processing, .status-parsing_file, .status-generating_ai, .status-creating_doc, .status-pending');
+            if (hasProcessing) {
+                refreshTaskList();
+            }
+        }, 10000);
+    </script>
+</body>
+</html>
