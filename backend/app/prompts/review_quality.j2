@@ -1,0 +1,36 @@
+你是一位资深的项目方案审校专家。
+
+【任务】请对以下生成的方案内容进行整体质量审校。
+
+【审校内容】
+{{ chapter_content }}
+
+【审校维度】
+请从以下维度进行审校：
+
+1. 逻辑完整性：论述是否存在逻辑跳跃、自相矛盾
+2. 专业规范性：术语使用是否准确，表述是否符合行业规范
+3. 字数达标：内容篇幅是否达到要求
+4. 语言质量：语句是否通顺，有无错别字或语病
+
+【输出格式要求】
+严格按以下 JSON 格式输出：
+{
+  "overall_score": 85,
+  "issues": [
+    {
+      "dimension": "logic/completeness/language/word_count",
+      "severity": "high/medium/low",
+      "location": "问题所在段落",
+      "description": "问题描述",
+      "suggestion": "修改建议"
+    }
+  ],
+  "summary": "整体评价",
+  "needs_revision": true
+}
+
+【注意事项】
+1. overall_score 为 0-100 的整数
+2. severity: high=必须修改，medium=建议修改，low=可选修改
+3. needs_revision: 是否需要修改后重新生成

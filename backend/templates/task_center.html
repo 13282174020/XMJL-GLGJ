@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务管理中心 - 软件建设方案 AI 生成系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 25px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { font-size: 24px; }
+        .header-actions a, .header-actions button {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            text-decoration: none;
+            margin-left: 10px;
+        }
+        .content { padding: 30px; }
+        .task-table { width: 100%; border-collapse: collapse; }
+        .task-table th, .task-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .task-table th { background: #f8f9fa; font-weight: 600; }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-parsing, .status-analyzing, .status-generating, .status-reviewing, .status-rendering {
+            background: #d1ecf1; color: #0c5460;
+        }
+        .status-completed { background: #d4edda; color: #155724; }
+        .status-failed { background: #f8d7da; color: #721c24; }
+        .status-cancelled { background: #e2e3e5; color: #383d41; }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-bar .progress {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .btn-sm { padding: 4px 8px; font-size: 11px; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-success { background: #27ae60; color: white; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal.show { display: flex; }
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .modal-body { padding: 20px; }
+        .timeline-item {
+            display: flex;
+            gap: 15px;
+            padding: 10px 0;
+            border-left: 2px solid #ddd;
+            padding-left: 20px;
+            position: relative;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -6px;
+            top: 15px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #667eea;
+        }
+        .timeline-item.completed::before { background: #27ae60; }
+        .chapter-steps { margin-top: 20px; }
+        .chapter-step {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 6px;
+            background: #f8f9fa;
+        }
+        .chapter-step.completed { background: #d4edda; }
+        .chapter-step.generating { background: #d1ecf1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 任务管理中心</h1>
+            <div class="header-actions">
+                <a href="/">🏠 返回首页</a>
+                <button onclick="loadTaskList()">🔄 刷新</button>
+            </div>
+        </div>
+
+        <div class="content">
+            <div id="taskListContainer">
+                <div style="text-align: center; padding: 40px;">
+                    <div class="spinner" style="border-width: 3px; width: 40px; height: 40px;"></div>
+                    <p style="margin-top: 15px;">正在加载任务列表...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 详情弹窗 -->
+    <div class="modal" id="detailModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📋 任务详情</h3>
+                <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="detailContent"></div>
+        </div>
+    </div>
+
+    <script>
+        const STATUS_MAP = {
+            'pending': { text: '等待中', class: 'status-pending' },
+            'parsing': { text: '解析中', class: 'status-parsing' },
+            'analyzing': { text: '分析中', class: 'status-analyzing' },
+            'generating': { text: '生成中', class: 'status-generating' },
+            'reviewing': { text: '审校中', class: 'status-reviewing' },
+            'rendering': { text: '渲染中', class: 'status-rendering' },
+            'completed': { text: '已完成', class: 'status-completed' },
+            'failed': { text: '失败', class: 'status-failed' },
+            'cancelled': { text: '已取消', class: 'status-cancelled' }
+        };
+
+        let pollingTimer = null;
+
+        async function loadTaskList() {
+            const container = document.getElementById('taskListContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="spinner" style="border-width: 3px; width: 40px; height: 40px;"></div><p style="margin-top: 15px;">正在加载...</p></div>';
+
+            try {
+                const response = await fetch('/api/v1/tasks');
+                const data = await response.json();
+
+                if (data.success) {
+                    renderTaskList(data.tasks);
+                } else {
+                    container.innerHTML = '<p>加载失败</p>';
+                }
+            } catch (error) {
+                container.innerHTML = '<p>加载失败：' + error.message + '</p>';
+            }
+        }
+
+        function renderTaskList(tasks) {
+            const container = document.getElementById('taskListContainer');
+
+            if (tasks.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 60px 20px; color: #999;">
+                        <div style="font-size: 64px;">📭</div>
+                        <p>暂无任务记录</p>
+                        <a href="/" style="color: #667eea;">去创建第一个任务</a>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<table class="task-table"><thead><tr><th>任务 ID</th><th>状态</th><th>进度</th><th>当前阶段</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
+
+            tasks.forEach(task => {
+                const statusInfo = STATUS_MAP[task.status] || { text: task.status, class: '' };
+                html += `
+                    <tr>
+                        <td>${task.task_id.substring(0, 8)}...</td>
+                        <td><span class="status-badge ${statusInfo.class}">${statusInfo.text}</span></td>
+                        <td style="width: 150px;">
+                            <div class="progress-bar">
+                                <div class="progress" style="width: ${task.progress}%"></div>
+                            </div>
+                            <small>${task.progress}%</small>
+                        </td>
+                        <td>${task.current_stage || '-'}</td>
+                        <td>${task.created_at || '-'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="showTaskDetail('${task.task_id}')">详情</button>
+                            ${task.output_file_path ? `<a href="/api/v1/tasks/${task.task_id}/download" class="btn btn-sm btn-success">下载</a>` : ''}
+                            ${task.status === 'pending' || task.status === 'parsing' || task.status === 'generating' ? `<button class="btn btn-sm btn-danger" onclick="cancelTask('${task.task_id}')">取消</button>` : ''}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        async function showTaskDetail(taskId) {
+            const modal = document.getElementById('detailModal');
+            const content = document.getElementById('detailContent');
+
+            content.innerHTML = '<div style="text-align: center; padding: 40px;"><div class="spinner" style="border-width: 3px; width: 40px; height: 40px;"></div><p style="margin-top: 15px;">正在加载详情...</p></div>';
+            modal.classList.add('show');
+
+            // 启动轮询
+            pollTaskDetail(taskId);
+        }
+
+        async function pollTaskDetail(taskId) {
+            try {
+                const response = await fetch('/api/v1/tasks/' + taskId);
+                const data = await response.json();
+
+                if (data.success) {
+                    renderTaskDetail(data.task);
+
+                    // 如果任务还在进行中，继续轮询
+                    if (data.task.status === 'pending' || data.task.status === 'parsing' || 
+                        data.task.status === 'analyzing' || data.task.status === 'generating' ||
+                        data.task.status === 'reviewing' || data.task.status === 'rendering') {
+                        if (pollingTimer) clearTimeout(pollingTimer);
+                        pollingTimer = setTimeout(() => pollTaskDetail(taskId), 2000);
+                    }
+                }
+            } catch (error) {
+                console.error('轮询失败:', error);
+            }
+        }
+
+        function renderTaskDetail(task) {
+            const content = document.getElementById('detailContent');
+            const statusInfo = STATUS_MAP[task.status] || { text: task.status, class: '' };
+
+            // 生成章节步骤 HTML
+            let chapterStepsHtml = '';
+            const chapters = task.chapter_structure_json?.chapters || [];
+            const generatedChapters = task.generated_chapters_json || [];
+            
+            if (chapters.length > 0) {
+                chapterStepsHtml = '<div class="chapter-steps"><h4>📑 章节生成进度</h4>';
+                chapters.forEach((ch, idx) => {
+                    const isCompleted = idx < generatedChapters.length;
+                    const isGenerating = task.current_chapter === ch.title;
+                    const className = isCompleted ? 'completed' : (isGenerating ? 'generating' : '');
+                    chapterStepsHtml += `
+                        <div class="chapter-step ${className}">
+                            <strong>${ch.number} ${ch.title}</strong>
+                            ${isCompleted ? ' <span style="color: #27ae60;">✓ 已完成</span>' : ''}
+                            ${isGenerating ? ' <span style="color: #3498db;">⏳ 生成中...</span>' : ''}
+                        </div>
+                    `;
+                });
+                chapterStepsHtml += '</div>';
+            }
+
+            content.innerHTML = `
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                        <label style="font-size: 12px; color: #999;">任务 ID</label>
+                        <div style="font-weight: 600;">${task.task_id}</div>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                        <label style="font-size: 12px; color: #999;">当前状态</label>
+                        <div><span class="status-badge ${statusInfo.class}">${statusInfo.text}</span></div>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                        <label style="font-size: 12px; color: #999;">生成进度</label>
+                        <div>${task.progress}%</div>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                        <label style="font-size: 12px; color: #999;">当前阶段</label>
+                        <div>${task.current_stage || task.current_chapter || '-'}</div>
+                    </div>
+                </div>
+
+                <div class="timeline">
+                    <h4>📅 处理时间线</h4>
+                    <div class="timeline-item ${task.created_at ? 'completed' : ''}">
+                        <div style="color: #999; min-width: 150px;">${task.created_at || '-'}</div>
+                        <div>任务创建</div>
+                    </div>
+                    <div class="timeline-item ${task.started_at ? 'completed' : ''}">
+                        <div style="color: #999; min-width: 150px;">${task.started_at || '-'}</div>
+                        <div>开始处理</div>
+                    </div>
+                    <div class="timeline-item ${task.completed_at && task.status === 'completed' ? 'completed' : ''}">
+                        <div style="color: #999; min-width: 150px;">${task.completed_at || '-'}</div>
+                        <div>${task.status === 'completed' ? '生成完成' : (task.status === 'failed' ? '生成失败' : '处理中')}</div>
+                    </div>
+                </div>
+
+                ${chapterStepsHtml}
+
+                ${task.error_message ? `<div style="margin-top: 20px; padding: 15px; background: #fef0f0; border: 1px solid #e74c3c; border-radius: 8px; color: #721c24;"><strong>错误信息：</strong>${task.error_message}</div>` : ''}
+
+                <div style="margin-top: 20px; text-align: center;">
+                    ${task.output_file_path ? `
+                        <a href="/api/v1/tasks/${task.task_id}/download" class="btn btn-success" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; padding: 12px 25px;">
+                            📥 下载生成的文档
+                        </a>
+                    ` : ''}
+                    ${task.partial_file_path ? `
+                        <a href="/api/v1/tasks/${task.task_id}/download" class="btn btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; padding: 12px 25px;">
+                            👁 预览当前进度
+                        </a>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detailModal').classList.remove('show');
+            if (pollingTimer) clearTimeout(pollingTimer);
+        }
+
+        async function cancelTask(taskId) {
+            if (!confirm('确定要取消这个任务吗？')) return;
+
+            try {
+                const response = await fetch('/api/v1/tasks/' + taskId + '/cancel', { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('任务已取消');
+                    loadTaskList();
+                } else {
+                    alert('取消失败：' + data.message);
+                }
+            } catch (error) {
+                alert('取消失败：' + error.message);
+            }
+        }
+
+        // 关闭弹窗（点击背景）
+        document.getElementById('detailModal').addEventListener('click', function(e) {
+            if (e.target === this) closeDetailModal();
+        });
+
+        // 页面加载时获取任务列表
+        loadTaskList();
+    </script>
+</body>
+</html>
