@@ -61,6 +61,86 @@ class AIEngine:
         result = self.adapter.call_with_json(prompt)
         return result
     
+    def generate_section_for_template(
+        self,
+        project_context: Dict[str, Any],
+        section: Dict[str, Any],
+        user_instruction: str = '',
+        data_points: Dict[str, Any] = None
+    ) -> str:
+        """为模板中的小节生成内容
+        
+        Args:
+            project_context: 项目上下文信息
+            section: 小节信息（来自模板分析）
+            user_instruction: 用户补充要求
+            data_points: 数据点字典
+            
+        Returns:
+            生成的内容文本
+        """
+        prompt = render_prompt(
+            'generate_chapter',
+            project_context=project_context,
+            chapter=section,
+            data_points=data_points or {},
+            user_instruction=user_instruction,
+            prev_summary='',
+            example=''
+        )
+        
+        result = self.adapter.call_with_json(prompt)
+        
+        # 提取文本内容
+        content_parts = []
+        if 'subsections' in result:
+            for sub in result['subsections']:
+                if 'paragraphs' in sub:
+                    content_parts.extend(sub['paragraphs'])
+        
+        return '\n'.join(content_parts) if content_parts else ''
+    
+    def generate_content_for_section(
+        self,
+        project_context: Dict[str, Any],
+        section_title: str,
+        section_number: str,
+        user_instruction: str = '',
+        data_points: Dict[str, Any] = None
+    ) -> str:
+        """为指定标题的小节生成内容
+        
+        Args:
+            project_context: 项目上下文信息
+            section_title: 小节标题
+            section_number: 小节编号
+            user_instruction: 用户补充要求
+            data_points: 数据点字典
+            
+        Returns:
+            生成的内容文本
+        """
+        chapter_info = {
+            'number': section_number,
+            'title': section_title,
+            'content_type': 'text',
+            'estimated_words': 500,
+            'subsections': []
+        }
+        
+        prompt = render_prompt(
+            'generate_chapter',
+            project_context=project_context,
+            chapter=chapter_info,
+            data_points=data_points or {},
+            user_instruction=user_instruction,
+            prev_summary='',
+            example=''
+        )
+        
+        result = self.adapter.call(prompt)
+        return result
+    
     def generate_chapter(
         self,
         project_context: Dict[str, Any],
@@ -70,14 +150,14 @@ class AIEngine:
         example: str = ''
     ) -> Dict[str, Any]:
         """阶段三：生成单个章节内容
-        
+
         Args:
             project_context: 项目上下文信息
             chapter: 当前章节要求
             user_instruction: 用户补充要求
             prev_summary: 前文摘要
             example: Few-shot 示例
-            
+
         Returns:
             生成的章节内容 JSON
         """
@@ -90,15 +170,15 @@ class AIEngine:
             prev_summary=prev_summary,
             example=example
         )
-        
+
         result = self.adapter.call_with_json(prompt)
-        
+
         # 提取并更新数据点
         if 'subsections' in result:
             chapter_text = json.dumps(result, ensure_ascii=False)
             new_points = self.data_point_manager.extract_from_text(chapter_text)
             self.data_point_manager.update(new_points)
-        
+
         return result
     
     def review_consistency(self, chapter_content: str) -> Dict[str, Any]:

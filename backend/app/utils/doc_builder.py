@@ -2,6 +2,7 @@
 """
 文档渲染工具 - SKILL-007
 DocBuilder 工具类，封装 Word 文档生成操作
+支持从模板加载样式，确保生成文档与模板格式一致
 """
 
 import os
@@ -31,7 +32,7 @@ class DocBuilder:
         'styles': {
             'chapter_title': {
                 'font': '黑体',
-                'size_pt': 16,
+                'size_pt': 22,
                 'bold': True,
                 'alignment': 'center',
                 'space_before_pt': 18,
@@ -39,7 +40,7 @@ class DocBuilder:
             },
             'section_title': {
                 'font': '黑体',
-                'size_pt': 15,
+                'size_pt': 16,
                 'bold': True,
                 'alignment': 'left',
                 'space_before_pt': 12,
@@ -55,7 +56,7 @@ class DocBuilder:
             },
             'body_text': {
                 'font': '仿宋',
-                'size_pt': 12,
+                'size_pt': 10.5,
                 'bold': False,
                 'alignment': 'justify',
                 'first_indent_chars': 2,
@@ -92,27 +93,142 @@ class DocBuilder:
         """初始化文档构建器
         
         Args:
-            template_path: Word 模板文件路径（可选）
+            template_path: Word 模板文件路径（可选，用于加载样式）
             style_config: 样式配置字典（可选）
         """
         self.template_path = template_path
-        self.style_config = style_config or self.DEFAULT_STYLES
+        self.style_config = style_config or self.DEFAULT_STYLES['styles']
+        self.template_styles = {}  # 从模板加载的样式
         
+        # 如果提供了模板文件，加载模板样式
         if template_path and os.path.exists(template_path):
+            self._load_template_styles(template_path)
+            # 使用模板中的文档作为基础
             self.doc = Document(template_path)
+            # 清除模板中的内容，保留样式
+            self._clear_document_content()
         else:
             self.doc = Document()
         
         self._setup_styles()
     
+    def _load_template_styles(self, template_path: str) -> None:
+        """从模板文档加载样式定义
+        
+        Args:
+            template_path: 模板文件路径
+        """
+        try:
+            template_doc = Document(template_path)
+            
+            # 提取所有样式的定义
+            for style_name in template_doc.styles:
+                style = template_doc.styles[style_name]
+                style_info = {
+                    'name': style_name,
+                    'font_name': None,
+                    'font_size': None,
+                    'bold': False,
+                    'italic': False,
+                    'alignment': 'left',
+                    'space_before': 0,
+                    'space_after': 0,
+                    'line_spacing': 1.0,
+                    'first_indent': 0
+                }
+                
+                # 提取字体信息
+                if hasattr(style, 'font') and style.font:
+                    font = style.font
+                    if font.name:
+                        style_info['font_name'] = font.name
+                    if font.size:
+                        style_info['font_size'] = font.size.pt
+                    style_info['bold'] = font.bold if font.bold is not None else False
+                    style_info['italic'] = font.italic if font.italic is not None else False
+                
+                # 提取段落格式
+                if hasattr(style, 'paragraph_format') and style.paragraph_format:
+                    pf = style.paragraph_format
+                    if hasattr(pf, 'alignment') and pf.alignment:
+                        style_info['alignment'] = str(pf.alignment)
+                    if hasattr(pf, 'space_before') and pf.space_before:
+                        style_info['space_before'] = pf.space_before.pt if pf.space_before else 0
+                    if hasattr(pf, 'space_after') and pf.space_after:
+                        style_info['space_after'] = pf.space_after.pt if pf.space_after else 0
+                    if hasattr(pf, 'line_spacing') and pf.line_spacing:
+                        style_info['line_spacing'] = pf.line_spacing
+                    if hasattr(pf, 'first_line_indent') and pf.first_line_indent:
+                        style_info['first_indent'] = pf.first_line_indent.cm if pf.first_line_indent else 0
+                
+                self.template_styles[style_name] = style_info
+            
+            # 映射模板样式到内部样式
+            self._map_template_styles()
+            
+        except Exception as e:
+            print(f"警告：无法加载模板样式：{str(e)}")
+    
+    def _map_template_styles(self) -> None:
+        """将模板样式映射到内部样式配置"""
+        # 标题样式映射
+        style_mapping = {
+            'chapter_title': ['Heading 1', '标题 1', '章标题', '1'],
+            'section_title': ['Heading 2', '标题 2', '节标题', '2'],
+            'subsection_title': ['Heading 3', '标题 3', '小节标题', '3'],
+            'body_text': ['Normal', '正文', 'GP 正文 (首行缩进)']
+        }
+        
+        for internal_name, template_names in style_mapping.items():
+            for template_name in template_names:
+                if template_name in self.template_styles:
+                    ts = self.template_styles[template_name]
+                    self.style_config[internal_name] = {
+                        'font': ts.get('font_name') or self.style_config[internal_name].get('font', '仿宋'),
+                        'size_pt': ts.get('font_size') or self.style_config[internal_name].get('size_pt', 10.5),
+                        'bold': ts.get('bold', False),
+                        'alignment': self._convert_alignment(ts.get('alignment', 'left')),
+                        'space_before_pt': ts.get('space_before', 0),
+                        'space_after_pt': ts.get('space_after', 0),
+                        'first_indent_chars': 2 if ts.get('first_indent', 0) > 0 else 0,
+                        'line_spacing': ts.get('line_spacing', 1.5)
+                    }
+                    break
+    
+    def _convert_alignment(self, alignment_str: str) -> str:
+        """转换对齐方式字符串"""
+        alignment_map = {
+            'center': 'center',
+            'left': 'left',
+            'right': 'right',
+            'justify': 'justify',
+            'WD_ALIGN_PARAGRAPH.CENTER': 'center',
+            'WD_ALIGN_PARAGRAPH.LEFT': 'left',
+            'WD_ALIGN_PARAGRAPH.RIGHT': 'right',
+            'WD_ALIGN_PARAGRAPH.JUSTIFY': 'justify'
+        }
+        return alignment_map.get(str(alignment_str), 'left')
+    
+    def _clear_document_content(self) -> None:
+        """清除文档内容，保留样式"""
+        # 保留第一个段落（通常包含样式定义），清除其他内容
+        while len(self.doc.paragraphs) > 1:
+            p = self.doc.paragraphs[-1]
+            p._element.getparent().remove(p._element)
+        
+        # 清除表格
+        while len(self.doc.tables) > 0:
+            t = self.doc.tables[-1]
+            t._element.getparent().remove(t._element)
+    
     def _setup_styles(self) -> None:
         """设置文档样式"""
         style = self.doc.styles['Normal']
-        body_style = self.style_config['styles']['body_text']
+        body_style = self.style_config.get('body_text', {})
         
-        style.font.name = body_style['font']
-        style.font.size = Pt(body_style['size_pt'])
-        style._element.rPr.rFonts.set(qn('w:eastAsia'), body_style['font'])
+        style.font.name = body_style.get('font', '仿宋')
+        style.font.size = Pt(body_style.get('size_pt', 10.5))
+        style._element.rPr.rFonts.set(qn('w:eastAsia'), body_style.get('font', '仿宋'))
     
     def add_cover(self, project_info: Dict[str, Any]) -> None:
         """添加封面页
@@ -128,7 +244,7 @@ class DocBuilder:
         title.paragraph_format.space_after = Cm(1)
         
         run = title.add_run(project_name)
-        self._apply_style(run, self.style_config['styles']['cover_title'])
+        self._apply_style(run, self.style_config.get('cover_title', {}))
         
         # 副标题
         subtitle = self.doc.add_paragraph()
@@ -137,7 +253,7 @@ class DocBuilder:
         subtitle.paragraph_format.space_after = Cm(3)
         
         run = subtitle.add_run('可行性研究报告')
-        self._apply_style(run, self.style_config['styles']['cover_subtitle'])
+        self._apply_style(run, self.style_config.get('cover_subtitle', {}))
         
         # 空白行
         for _ in range(5):
@@ -181,7 +297,7 @@ class DocBuilder:
         Args:
             chapters: 章节列表
         """
-        self.add_chapter_title('目录')
+        self._add_heading_style('目录', level=1)
         self.doc.add_paragraph()
         
         for chapter in chapters:
@@ -204,30 +320,66 @@ class DocBuilder:
         
         self.add_page_break()
     
+    def _add_heading_style(self, text: str, level: int = 1) -> None:
+        """添加标题，使用模板样式
+        
+        Args:
+            text: 标题文本
+            level: 标题层级 (1-4)
+        """
+        # 获取对应层级的样式配置
+        style_config = self._get_style_for_level(level)
+        
+        # 添加段落
+        para = self.doc.add_paragraph()
+        
+        # 设置对齐方式
+        alignment = style_config.get('alignment', 'left')
+        if alignment == 'center':
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        elif alignment == 'right':
+            para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        elif alignment == 'justify':
+            para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        else:
+            para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        
+        # 设置间距
+        space_before = style_config.get('space_before_pt', 0)
+        space_after = style_config.get('space_after_pt', 0)
+        if space_before:
+            para.paragraph_format.space_before = Cm(space_before / 72 * 2.54)
+        if space_after:
+            para.paragraph_format.space_after = Cm(space_after / 72 * 2.54)
+        
+        # 添加文本
+        run = para.add_run(text)
+        self._apply_style(run, style_config)
+    
+    def _get_style_for_level(self, level: int) -> Dict[str, Any]:
+        """根据层级获取样式配置
+        
+        Args:
+            level: 标题层级 (1-4)
+            
+        Returns:
+            样式配置字典
+        """
+        styles = {
+            1: self.style_config.get('chapter_title', {}),
+            2: self.style_config.get('section_title', {}),
+            3: self.style_config.get('subsection_title', {}),
+            4: self.style_config.get('subsection_title', {})
+        }
+        return styles.get(level, styles[4])
+    
     def add_chapter_title(self, title: str) -> None:
         """添加章标题
         
         Args:
             title: 章标题
         """
-        heading = self.doc.add_heading(title, level=1)
-        heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        for run in heading.runs:
-            run.font.name = self.style_config['styles']['chapter_title']['font']
-            run.font.size = Pt(self.style_config['styles']['chapter_title']['size_pt'])
-            run.font.bold = self.style_config['styles']['chapter_title']['bold']
-            run._element.rPr.rFonts.set(
-                qn('w:eastAsia'),
-                self.style_config['styles']['chapter_title']['font']
-            )
-        
-        heading.paragraph_format.space_before = Cm(
-            self.style_config['styles']['chapter_title']['space_before_pt'] / 72 * 2.54
-        )
-        heading.paragraph_format.space_after = Cm(
-            self.style_config['styles']['chapter_title']['space_after_pt'] / 72 * 2.54
-        )
+        self._add_heading_style(title, level=1)
     
     def add_section_title(self, title: str) -> None:
         """添加节标题
@@ -235,23 +387,7 @@ class DocBuilder:
         Args:
             title: 节标题
         """
-        heading = self.doc.add_heading(title, level=2)
-        
-        for run in heading.runs:
-            run.font.name = self.style_config['styles']['section_title']['font']
-            run.font.size = Pt(self.style_config['styles']['section_title']['size_pt'])
-            run.font.bold = self.style_config['styles']['section_title']['bold']
-            run._element.rPr.rFonts.set(
-                qn('w:eastAsia'),
-                self.style_config['styles']['section_title']['font']
-            )
-        
-        heading.paragraph_format.space_before = Cm(
-            self.style_config['styles']['section_title']['space_before_pt'] / 72 * 2.54
-        )
-        heading.paragraph_format.space_after = Cm(
-            self.style_config['styles']['section_title']['space_after_pt'] / 72 * 2.54
-        )
+        self._add_heading_style(title, level=2)
     
     def add_subsection_title(self, title: str) -> None:
         """添加小节标题
@@ -259,16 +395,7 @@ class DocBuilder:
         Args:
             title: 小节标题
         """
-        heading = self.doc.add_heading(title, level=3)
-        
-        for run in heading.runs:
-            run.font.name = self.style_config['styles']['subsection_title']['font']
-            run.font.size = Pt(self.style_config['styles']['subsection_title']['size_pt'])
-            run.font.bold = self.style_config['styles']['subsection_title']['bold']
-            run._element.rPr.rFonts.set(
-                qn('w:eastAsia'),
-                self.style_config['styles']['subsection_title']['font']
-            )
+        self._add_heading_style(title, level=3)
     
     def add_body(self, text: str) -> None:
         """添加正文段落
@@ -282,17 +409,19 @@ class DocBuilder:
         para = self.doc.add_paragraph()
         run = para.add_run(text)
         
-        body_style = self.style_config['styles']['body_text']
-        run.font.name = body_style['font']
-        run.font.size = Pt(body_style['size_pt'])
-        run._element.rPr.rFonts.set(qn('w:eastAsia'), body_style['font'])
+        body_style = self.style_config.get('body_text', {})
+        run.font.name = body_style.get('font', '仿宋')
+        run.font.size = Pt(body_style.get('size_pt', 10.5))
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), body_style.get('font', '仿宋'))
         
         # 首行缩进
-        para.paragraph_format.first_line_indent = Cm(
-            body_style.get('first_indent_chars', 2) * 0.37
-        )
+        first_indent = body_style.get('first_indent_chars', 2)
+        if first_indent > 0:
+            para.paragraph_format.first_line_indent = Cm(first_indent * 0.37)
+        
         # 行距
-        para.paragraph_format.line_spacing = body_style.get('line_spacing', 1.5)
+        line_spacing = body_style.get('line_spacing', 1.5)
+        para.paragraph_format.line_spacing = line_spacing
         para.paragraph_format.space_before = Cm(0)
         para.paragraph_format.space_after = Cm(0)
     
@@ -320,13 +449,10 @@ class DocBuilder:
             for paragraph in cell.paragraphs:
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 for run in paragraph.runs:
-                    run.font.name = self.style_config['styles']['table_header']['font']
-                    run.font.size = Pt(self.style_config['styles']['table_header']['size_pt'])
-                    run.font.bold = self.style_config['styles']['table_header']['bold']
-                    run._element.rPr.rFonts.set(
-                        qn('w:eastAsia'),
-                        self.style_config['styles']['table_header']['font']
-                    )
+                    run.font.name = self.style_config.get('table_header', {}).get('font', '黑体')
+                    run.font.size = Pt(self.style_config.get('table_header', {}).get('size_pt', 10.5))
+                    run.font.bold = self.style_config.get('table_header', {}).get('bold', True)
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
         
         # 设置数据行
         for i, row_data in enumerate(rows):
@@ -338,12 +464,9 @@ class DocBuilder:
                 for paragraph in cell.paragraphs:
                     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     for run in paragraph.runs:
-                        run.font.name = self.style_config['styles']['table_cell']['font']
-                        run.font.size = Pt(self.style_config['styles']['table_cell']['size_pt'])
-                        run._element.rPr.rFonts.set(
-                            qn('w:eastAsia'),
-                            self.style_config['styles']['table_cell']['font']
-                        )
+                        run.font.name = self.style_config.get('table_cell', {}).get('font', '宋体')
+                        run.font.size = Pt(self.style_config.get('table_cell', {}).get('size_pt', 10.5))
+                        run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
     
     def add_page_break(self) -> None:
         """添加分页符"""
@@ -356,10 +479,13 @@ class DocBuilder:
             run: docx run 对象
             style: 样式配置
         """
-        run.font.name = style['font']
-        run.font.size = Pt(style['size_pt'])
-        run.font.bold = style.get('bold', False)
-        run._element.rPr.rFonts.set(qn('w:eastAsia'), style['font'])
+        if style.get('font'):
+            run.font.name = style['font']
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), style['font'])
+        if style.get('size_pt'):
+            run.font.size = Pt(style['size_pt'])
+        if style.get('bold'):
+            run.font.bold = True
     
     def save(self, output_path: str) -> str:
         """保存文档
@@ -408,6 +534,8 @@ class DocBuilder:
             self.add_section_title(f"{number} {title}")
         elif level == 3:
             self.add_subsection_title(f"{number} {title}")
+        elif level >= 4:
+            self._add_heading_style(f"{number} {title}", level=4)
         
         # 渲染内容
         content_type = subsection.get('type', 'text')
@@ -444,6 +572,85 @@ class DocBuilder:
         # 正文
         for chapter in json_data.get('generated_chapters', []):
             self.render_chapter(chapter)
+    
+    def render_from_template_structure(self, template_structure: Dict[str, Any], 
+                                       chapter_contents: Dict[str, str]) -> None:
+        """根据模板结构渲染文档
+        
+        Args:
+            template_structure: 模板结构树（来自 TemplateAnalyzer）
+            chapter_contents: 各章节内容字典 {章节编号：内容文本}
+        """
+        # 添加封面
+        self.add_cover({'name': '建设项目', 'org_name': 'XX 单位'})
+        
+        # 添加目录
+        chapters = template_structure.get('chapter_tree', [])
+        self.add_toc(chapters)
+        
+        # 按模板结构逐章渲染
+        for chapter in chapters:
+            self._render_template_chapter(chapter, chapter_contents)
+    
+    def _render_template_chapter(self, chapter: Dict[str, Any], 
+                                  chapter_contents: Dict[str, str]) -> None:
+        """渲染模板中的章节
+        
+        Args:
+            chapter: 章节数据（来自模板分析）
+            chapter_contents: 章节内容字典
+        """
+        # 添加章标题
+        self.add_chapter_title(chapter['title'])
+        
+        # 渲染小节
+        for section in chapter.get('subsections', []):
+            self._render_template_section(section, chapter_contents)
+        
+        self.add_page_break()
+    
+    def _render_template_section(self, section: Dict[str, Any], 
+                                   chapter_contents: Dict[str, str]) -> None:
+        """渲染模板中的小节
+        
+        Args:
+            section: 小节数据
+            chapter_contents: 章节内容字典
+        """
+        # 添加节标题
+        self.add_section_title(section['title'])
+        
+        # 获取内容（如果有）
+        content = chapter_contents.get(section['title'], '')
+        if content:
+            # 将内容分割成段落
+            paragraphs = content.split('\n')
+            for para in paragraphs:
+                if para.strip():
+                    self.add_body(para.strip())
+        
+        # 渲染子节点（三级标题等）
+        for child in section.get('children', []):
+            self._render_template_subsection(child, chapter_contents)
+    
+    def _render_template_subsection(self, subsection: Dict[str, Any], 
+                                     chapter_contents: Dict[str, str]) -> None:
+        """渲染模板中的小小节
+        
+        Args:
+            subsection: 小小节数据
+            chapter_contents: 章节内容字典
+        """
+        # 添加小小节标题
+        self._add_heading_style(subsection['title'], level=3)
+        
+        # 获取内容
+        content = chapter_contents.get(subsection['title'], '')
+        if content:
+            paragraphs = content.split('\n')
+            for para in paragraphs:
+                if para.strip():
+                    self.add_body(para.strip())
 
 
 def create_doc_builder(template_path: Optional[str] = None, style_config: Optional[Dict] = None) -> DocBuilder:

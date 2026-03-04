@@ -14,6 +14,7 @@ from datetime import datetime
 from app.models.task import GenerationTask, UploadedDocument, DocumentTemplate, ChapterContent
 from app.services.ai_engine import AIEngine
 from app.services.document_parser import parse_document
+from app.services.template_analyzer import TemplateAnalyzer
 from app.utils.doc_builder import DocBuilder
 from app.config import config
 
@@ -257,41 +258,41 @@ def list_tasks():
 
 
 def process_task(task_id: str, requirement_text: str, template, user_instruction: str, llm_model: str, options: dict):
-    """后台处理任务
-    
+    """后台处理任务 - 按模板结构逐节生成
+
     五阶段流程：
     1. 文档解析与信息提取
-    2. 模板结构分析
-    3. 分章节内容生成
+    2. 模板结构分析（使用 TemplateAnalyzer 提取完整结构）
+    3. 分章节内容生成（按模板结构逐节生成）
     4. 质量审校
-    5. Word 文档渲染
+    5. Word 文档渲染（使用模板样式）
     """
     db_session = current_app.config['db_session']()
-    
+
     try:
         task = db_session.query(GenerationTask).filter_by(id=task_id).first()
         if not task:
             return
-        
+
         # 更新状态：开始处理
         task.status = 'parsing'
         task.progress = 5
         task.started_at = datetime.now()
         db_session.commit()
-        
+
         # 初始化 AI 引擎
         api_key = config.llm_api_key
         if not api_key:
             raise Exception("未配置 LLM API Key，请在 config.json 中设置")
-        
+
         engine = AIEngine(api_key, llm_model)
-        
+
         # ========== 阶段一：信息提取 ==========
         task.status = 'parsing'
         task.progress = 10
         task.current_stage = '正在提取需求信息...'
         db_session.commit()
-        
+
         try:
             project_context = engine.extract_requirements(requirement_text)
             task.project_context_json = project_context
@@ -306,102 +307,131 @@ def process_task(task_id: str, requirement_text: str, template, user_instruction
                 'constraints': [],
                 'special_notes': []
             }
-        
-        # ========== 阶段二：模板分析 ==========
+
+        # ========== 阶段二：模板结构分析 ==========
         task.status = 'analyzing'
         task.progress = 20
         task.current_stage = '正在分析模板结构...'
         db_session.commit()
+
+        # 使用 TemplateAnalyzer 提取完整模板结构
+        template_structure = None
+        template_path = None
         
-        # 使用默认章节结构
-        chapter_structure = {
-            'chapters': [
-                {'number': '1', 'title': '项目概况', 'level': 1, 'subsections': []},
-                {'number': '2', 'title': '项目建设单位概况', 'level': 1, 'subsections': []},
-                {'number': '3', 'title': '项目建设的必要性', 'level': 1, 'subsections': []},
-            ]
-        }
-        task.chapter_structure_json = chapter_structure
-        db_session.commit()
+        if template and template.template_file_path:
+            template_path = template.template_file_path
+            try:
+                analyzer = TemplateAnalyzer(template_path)
+                template_structure = analyzer.get_full_structure()
+                task.chapter_structure_json = {'chapters': template_structure['chapter_tree']}
+                db_session.commit()
+            except Exception as e:
+                # 分析失败，使用默认结构
+                template_structure = None
         
-        # ========== 阶段三：分章节生成 ==========
+        if not template_structure:
+            # 使用默认章节结构
+            template_structure = {
+                'chapter_tree': [
+                    {'number': '1', 'title': '项目概况', 'level': 1, 'subsections': []},
+                    {'number': '2', 'title': '项目建设单位概况', 'level': 1, 'subsections': []},
+                    {'number': '3', 'title': '项目建设的必要性', 'level': 1, 'subsections': []},
+                ]
+            }
+            task.chapter_structure_json = {'chapters': template_structure['chapter_tree']}
+            db_session.commit()
+
+        # ========== 阶段三：按模板结构分节生成 ==========
         task.status = 'generating'
         task.progress = 30
         task.current_stage = '正在生成章节内容...'
         db_session.commit()
+
+        chapter_contents = {}  # 章节标题 -> 内容
+        total_sections = 0
+        generated_sections = 0
         
-        generated_chapters = []
+        # 统计需要生成的小节数量
+        for chapter in template_structure['chapter_tree']:
+            for section in chapter.get('subsections', []):
+                total_sections += 1
+                for child in section.get('children', []):
+                    total_sections += 1
         
-        for idx, chapter in enumerate(chapter_structure['chapters']):
+        # 逐章逐节生成内容
+        for chapter_idx, chapter in enumerate(template_structure['chapter_tree']):
             # 检查是否被取消
             db_session.refresh(task)
             if task.status == 'cancelled':
                 return
-            
+
             task.current_chapter = chapter['title']
-            task.progress = 30 + int((idx + 1) / len(chapter_structure['chapters']) * 40)
-            db_session.commit()
             
-            try:
-                # 生成章节
-                chapter_content = engine.generate_chapter(
-                    project_context=project_context,
-                    chapter=chapter,
-                    user_instruction=user_instruction
-                )
-                generated_chapters.append(chapter_content)
-                
-            except Exception as e:
-                # 生成失败，使用默认内容
-                generated_chapters.append({
-                    'chapter_number': chapter['number'],
-                    'chapter_title': chapter['title'],
-                    'subsections': []
-                })
-        
-        task.generated_chapters_json = generated_chapters
+            # 为每个小节生成内容
+            for section_idx, section in enumerate(chapter.get('subsections', [])):
+                try:
+                    # 生成小节内容
+                    content = engine.generate_content_for_section(
+                        project_context=project_context,
+                        section_title=section['title'],
+                        section_number=section.get('number', ''),
+                        user_instruction=user_instruction,
+                        data_points=engine.data_point_manager.get_all()
+                    )
+                    chapter_contents[section['title']] = content
+                    generated_sections += 1
+                    
+                    # 更新进度
+                    task.progress = 30 + int(generated_sections / total_sections * 40)
+                    db_session.commit()
+                    
+                except Exception as e:
+                    # 生成失败，记录空内容
+                    chapter_contents[section['title']] = ''
+
+        task.generated_chapters_json = chapter_contents
         db_session.commit()
-        
+
         # ========== 阶段四：质量审校 ==========
         task.status = 'reviewing'
         task.progress = 75
         task.current_stage = '正在进行质量审校...'
         db_session.commit()
-        
+
         # 简化处理，跳过详细审校
-        
-        # ========== 阶段五：Word 文档渲染 ==========
+
+        # ========== 阶段五：Word 文档渲染（使用模板样式） ==========
         task.status = 'rendering'
         task.progress = 85
         task.current_stage = '正在生成 Word 文档...'
         db_session.commit()
-        
-        # 构建完整 JSON
-        doc_json = {
-            'project_info': project_context.get('project_info', {}),
-            'chapters': chapter_structure.get('chapters', []),
-            'generated_chapters': generated_chapters
-        }
-        
-        # 渲染文档
-        builder = DocBuilder()
+
+        # 使用模板渲染文档
         output_filename = f"report_{task_id[:8]}.docx"
         output_path = os.path.join(current_app.config['OUTPUT_FOLDER'], output_filename)
-        
+
         try:
-            builder.render_document(doc_json)
+            # 如果有模板文件，使用模板样式
+            if template_path and os.path.exists(template_path):
+                builder = DocBuilder(template_path=template_path)
+            else:
+                builder = DocBuilder()
+            
+            # 按模板结构渲染
+            builder.render_from_template_structure(template_structure, chapter_contents)
             builder.save(output_path)
             task.output_file_path = output_path
         except Exception as e:
-            task.error_message = f"文档渲染失败：{str(e)}"
-        
+            import traceback
+            task.error_message = f"文档渲染失败：{str(e)} - {traceback.format_exc()}"
+
         # ========== 完成 ==========
         task.status = 'completed'
         task.progress = 100
         task.current_stage = ''
         task.completed_at = datetime.now()
         db_session.commit()
-        
+
     except Exception as e:
         # 任务失败
         if task:
@@ -409,8 +439,6 @@ def process_task(task_id: str, requirement_text: str, template, user_instruction
             task.error_message = str(e)
             task.completed_at = datetime.now()
             db_session.commit()
-    
+
     finally:
         db_session.close()
-        if task_id in task_threads:
-            del task_threads[task_id]
