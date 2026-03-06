@@ -746,12 +746,13 @@ def build_chapter_tree(headings):
 
 
 def find_parent_node(chapters, target_level):
-    """递归查找指定层级的最后一个节点"""
+    """递归查找指定层级的最后一个节点 - 修复空列表处理"""
     for chapter in reversed(chapters):
         if chapter['level'] == target_level:
             return chapter
-        if chapter.get('children'):
-            result = find_parent_node(chapter['children'], target_level)
+        children = chapter.get('children')
+        if children is not None and len(children) > 0:
+            result = find_parent_node(children, target_level)
             if result:
                 return result
     return None
@@ -877,8 +878,9 @@ def add_to_parent_by_level(chapters, node, level):
         for n in reversed(nodes):
             if n.get('level', 1) == target_level:
                 return n
-            if n.get('children'):
-                result = find_parent(n['children'], target_level)
+            children = n.get('children')
+            if children is not None and len(children) > 0:
+                result = find_parent(children, target_level)
                 if result:
                     return result
         return None
@@ -911,25 +913,27 @@ def add_to_parent(chapters, node, number):
 
 
 def find_node_by_number(chapters, number):
-    """递归查找指定编号的节点"""
+    """递归查找指定编号的节点 - 修复空列表处理"""
     for chapter in chapters:
         if chapter['number'] == number:
             return chapter
         # 在子节点中递归查找
-        if chapter.get('children'):
-            result = find_node_by_number(chapter['children'], number)
+        children = chapter.get('children')
+        if children is not None and len(children) > 0:
+            result = find_node_by_number(children, number)
             if result:
                 return result
     return None
 
 
 def count_all_nodes(chapters):
-    """递归统计所有节点数量"""
+    """递归统计所有节点数量 - 修复空列表处理"""
     count = 0
     for chapter in chapters:
         count += 1
-        if chapter.get('children'):
-            count += count_all_nodes(chapter['children'])
+        children = chapter.get('children')
+        if children is not None and len(children) > 0:
+            count += count_all_nodes(children)
     return count
 
 
@@ -1519,18 +1523,32 @@ def generate_word_document(template_type, requirement_content, template_content,
     # ========== 正文章节（使用用户配置的目录） ==========
     total_chapters = len(user_chapters)
 
+    def render_chapter_content(node, level=1):
+        """递归渲染章节内容"""
+        node_number = node.get('number', '')
+        node_title = node.get('title', '')
+        node_level = node.get('level', level)
+        children = node.get('children')
+        
+        # 添加章节标题
+        add_heading(doc, f"{node_number} {node_title}", level=node_level, styles=styles)
+        
+        # 判断是否有子节点
+        if children is not None and len(children) > 0:
+            # 有子节点，递归处理
+            for child in children:
+                render_chapter_content(child, level=node_level + 1)
+        else:
+            # 叶子节点，生成内容
+            content = get_chapter_content_template(node_title)
+            for para_text in content.split('\n'):
+                if para_text.strip():
+                    add_normal_paragraph(doc, para_text.strip(), styles=styles)
+
     for idx, chapter in enumerate(user_chapters):
-        # 添加章节标题（一级标题）
-        add_heading(doc, f"{chapter['number']} {chapter['title']}", level=1, styles=styles)
-
-        # 递归生成子章节内容（从二级标题开始）
-        if chapter.get('children'):
-            for child in chapter['children']:
-                child_level = child.get('level', 2)
-                add_heading(doc, f"{child['number']} {child['title']}", level=child_level, styles=styles)
-                generate_chapter_content(doc, child, requirement_content, template_content,
-                                          user_prompt, api_key, model, styles)
-
+        # 渲染章节内容（递归处理所有层级）
+        render_chapter_content(chapter, level=1)
+        
         doc.add_page_break()
 
         # 进度回调
@@ -1547,7 +1565,7 @@ def generate_word_document(template_type, requirement_content, template_content,
 
 
 def render_doc_toc(doc, chapters, styles, level=0):
-    """递归渲染目录"""
+    """递归渲染目录 - 正确处理空列表和 null"""
     for chapter in chapters:
         para = doc.add_paragraph()
         para.paragraph_format.left_indent = Cm(0.74 * level)
@@ -1555,9 +1573,11 @@ def render_doc_toc(doc, chapters, styles, level=0):
         run.font.name = '宋体'
         run.font.size = Pt(10.5)
         run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
-        
-        if chapter.get('children'):
-            render_doc_toc(doc, chapter['children'], styles, level + 1)
+
+        # 修复：检查 children 是否存在且非空
+        children = chapter.get('children')
+        if children is not None and len(children) > 0:
+            render_doc_toc(doc, children, styles, level + 1)
 
 def get_chapter_content_template(section_title):
     """根据章节标题返回预定义的内容模板"""
@@ -1570,11 +1590,11 @@ def get_chapter_content_template(section_title):
         '项目实施机构': '项目实施机构负责项目的具体实施工作，包括项目管理、协调推进、质量控制等职责。',
         '项目建设的必要性': '从政策要求、实际需求、发展趋势等方面论证项目建设的必要性。',
         '需求分析': '对项目的需求进行全面分析，包括业务需求、功能需求、性能需求等。',
-        '总体思路': '项目建设的总体思路是坚持以需求为导向，以技术为支撑，确保项目建设的科学性和可行性。',
+        '总体��路': '项目建设的总体思路是坚持以需求为导向，以技术为支撑，确保项目建设的科学性和可行性。',
         '总体框架': '项目总体框架包括架构设计、功能模块、技术路线等核心内容。',
         '技术路线': '项目采用成熟可靠的技术路线，确保系统的稳定性、安全性和可扩展性。',
         '投资估算': '投资估算包括硬件设备、软件开发、系统集成、工程建设等费用。',
-        '资金筹措': '项目资金来源明确，筹措方案可行，确保项目顺利实施。',
+        '资金筹措': '项目资金来源明确，筹措方案可行，确保项目��利实施。',
         '效益分析': '项目效益包括经济效益、社会效益、环境效益等多个方面。',
         '风险分析': '项目风险包括技术风险、管理风险、市场风险等，需制定相应的风险应对措施。',
         '结论': '综合各方面分析，项目具备建设的必要性和可行性。',
@@ -1592,15 +1612,18 @@ def generate_chapter_content(doc, chapter_node, requirement_content, template_co
                               user_prompt, api_key, model, styles, depth=0):
     """
     递归生成章节内容（使用本地生成方式）
-    严格按照目录树结构生成标题和内容
+    严格按照目录树结构生成标题和内容 - 修复空列表和 null 的处理
     """
-    # 如果当前节点有子节点，先处理子节点
-    if chapter_node.get('children'):
-        for child in chapter_node['children']:
+    children = chapter_node.get('children')
+    
+    # 判断是否有子节点
+    if children is not None and len(children) > 0:
+        # 有子节点，递归处理
+        for child in children:
             child_level = child.get('level', 2)
             # 根据层级添加标题
             add_heading(doc, f"{child['number']} {child['title']}", level=child_level, styles=styles)
-            
+
             # 递归处理子节点
             generate_chapter_content(doc, child, requirement_content, template_content,
                                       user_prompt, api_key, model, styles, depth + 1)
@@ -1822,11 +1845,147 @@ def process_document_async(task_id, template_type, requirement_content, template
         
         # 所有章节生成完成
         doc.save(output_path)
-        task_manager.set_partial_filename(task_id, None)  # 清除部分文件标记
+        task_manager.set_partial_filename(task_id, None)
         task_manager.mark_task_completed(task_id, output_filename=os.path.basename(output_path))
-        
+        print(f'[INFO] 文档生成完成：{output_path}')
+
     except Exception as e:
         import traceback
+        print(f'[ERROR] 文档生成失败：{e}')
+        task_manager.mark_task_failed(task_id, f'{str(e)}\n{traceback.format_exc()}')
+
+
+# ==================== 修复后的 process_document_async 函数 ==========
+# 使用保存的目录配置生成文档，而不是硬编码的 TEMPLATE_TYPES
+
+def process_document_async_v2(task_id, template_type, requirement_content, template_content,
+                           user_prompt, api_key, model, output_path):
+    """异步处理文档生成任务 - 使用保存的目录配置"""
+    doc_container = {'doc': None}
+
+    def save_partial_document():
+        if doc_container['doc']:
+            partial_filename = f'partial_{task_id[:8]}.docx'
+            partial_path = os.path.join(app.config['OUTPUT_FOLDER'], partial_filename)
+            doc_container['doc'].save(partial_path)
+            task_manager.set_partial_filename(task_id, partial_filename)
+
+    try:
+        task_manager.set_task_started(task_id)
+        task_manager.update_task_progress(task_id, progress=5,
+            status=TaskStatus.PARSING_FILE.value, message='解析上传文件中...')
+        task_manager.update_task_progress(task_id, progress=10,
+            status=TaskStatus.GENERATING_AI.value, message='准备生成文档...')
+
+        # 加载保存的目录配置
+        chapters_path = os.path.join(app.config['UPLOAD_FOLDER'], 'chapter_config.json')
+        user_chapters = None
+        if os.path.exists(chapters_path):
+            try:
+                with open(chapters_path, 'r', encoding='utf-8') as f:
+                    user_chapters = json.load(f)
+                print(f'[INFO] 已加载用户目录配置：{len(user_chapters)} 个一级章节')
+            except Exception as e:
+                print(f'[ERROR] 加载目录配置失败：{e}')
+        
+        if not user_chapters:
+            template_config = TEMPLATE_TYPES.get(template_type, TEMPLATE_TYPES['future_community'])
+            user_chapters = []
+            for chapter_title, sections in template_config['chapters']:
+                chapter_node = {
+                    'number': chapter_title.split()[0] if ' ' in chapter_title else '1',
+                    'title': chapter_title,
+                    'level': 1,
+                    'children': []
+                }
+                for idx, section in enumerate(sections):
+                    section_num = section.split()[0] if ' ' in section else f'{chapter_node["number"]}.{idx+1}'
+                    chapter_node['children'].append({
+                        'number': section_num,
+                        'title': section,
+                        'level': 2,
+                        'children': []
+                    })
+            print('[INFO] 使用默认模板配置')
+
+        styles = load_style_config()
+        doc = Document()
+        normal_style = styles.get('normal', {})
+        style = doc.styles['Normal']
+        style.font.name = normal_style.get('font_name', '仿宋')
+        style.font.size = Pt(normal_style.get('font_size', 10.5))
+        style._element.rPr.rFonts.set(qn('w:eastAsia'), normal_style.get('font_name', '仿宋'))
+
+        project_name = "建设项目"
+
+        # 封面
+        title = doc.add_paragraph()
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title.paragraph_format.space_before = Cm(5)
+        run = title.add_run(project_name)
+        run.font.name = '黑体'
+        run.font.size = Pt(36)
+        run.font.bold = True
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
+        doc.add_page_break()
+
+        # 编审名单
+        add_heading(doc, '项目编审人员名单', level=1, styles=styles)
+        doc.add_page_break()
+
+        # 目录 - 使用保存的目录配置
+        add_heading(doc, '目录', level=1, styles=styles)
+        
+        def render_toc(nodes, level=0):
+            for node in nodes:
+                para = doc.add_paragraph()
+                para.paragraph_format.left_indent = Cm(0.74 * level)
+                run = para.add_run(f"{node.get('number', '')} {node.get('title', '')}")
+                children = node.get('children')
+                if children is not None and len(children) > 0:
+                    render_toc(children, level + 1)
+        
+        render_toc(user_chapters)
+        doc.add_page_break()
+
+        doc_container['doc'] = doc
+        save_partial_document()
+        task_manager.update_task_progress(task_id, progress=15, message='目录完成')
+
+        # 正文 - 递归生成所有章节
+        total_chapters = len(user_chapters)
+
+        def render_chapter_content(node, level=1):
+            node_number = node.get('number', '')
+            node_title = node.get('title', '')
+            node_level = node.get('level', level)
+            children = node.get('children')
+            
+            add_heading(doc, f"{node_number} {node_title}", level=node_level, styles=styles)
+            
+            if children is not None and len(children) > 0:
+                for child in children:
+                    render_chapter_content(child, level=node_level + 1)
+            else:
+                content = get_chapter_content_template(node_title)
+                for para_text in content.split('\n'):
+                    if para_text.strip():
+                        add_normal_paragraph(doc, para_text.strip(), styles=styles)
+
+        for idx, chapter in enumerate(user_chapters):
+            task_manager.update_task_progress(task_id,
+                progress=15 + int((idx + 1) / total_chapters * 80),
+                message=f'正在生成第{idx + 1}章')
+            render_chapter_content(chapter, level=1)
+            save_partial_document()
+
+        doc.save(output_path)
+        task_manager.mark_task_completed(task_id, output_filename=os.path.basename(output_path))
+        print(f'[INFO] 文档生成完成：{output_path}')
+
+    except Exception as e:
+        import traceback
+        print(f'[ERROR] 文档生成失败：{e}')
         task_manager.mark_task_failed(task_id, f'{str(e)}\n{traceback.format_exc()}')
 
 
@@ -2058,9 +2217,9 @@ def generate():
         output_filename = f'{template_type}_可行性研究报告_{task_id_short}.docx'
         output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
 
-        # 启动异步线程处理任务
+        # 启动异步线程处理任务 - 使用修复后的 v2 版本
         thread = threading.Thread(
-            target=process_document_async,
+            target=process_document_async_v2,
             args=(task_id, template_type, requirement_content, template_content,
                   user_prompt, api_key, model, output_path)
         )

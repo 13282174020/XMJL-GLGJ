@@ -2,141 +2,346 @@
 # -*- coding: utf-8 -*-
 """
 未来社区建设方案生成器
-严格按照 chapter_config.json 的目录结构生成 Word 文档
+从"目录与样式配置"中加载章节结构和样式配置，生成 Word 文档
+支持：
+1. 从 uploads/chapter_config.json 加载目录结构
+2. 从 uploads/style_config.json 加载样式配置
+3. 根据配置的样式动态渲染文档
 """
 
 from docx import Document
-from docx.shared import Pt, Cm
+from docx.shared import Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 import os
 import json
+from pathlib import Path
+
+
+# ==================== 默认样式配置 ====================
+
+DEFAULT_STYLES = {
+    'heading1': {
+        'font': '黑体',
+        'size_pt': 22,
+        'bold': True,
+        'alignment': 'center',
+        'space_before_pt': 24,
+        'space_after_pt': 12
+    },
+    'heading2': {
+        'font': '黑体',
+        'size_pt': 16,
+        'bold': True,
+        'alignment': 'left',
+        'space_before_pt': 18,
+        'space_after_pt': 6
+    },
+    'heading3': {
+        'font': '黑体',
+        'size_pt': 14,
+        'bold': True,
+        'alignment': 'left',
+        'space_before_pt': 12,
+        'space_after_pt': 4
+    },
+    'heading4': {
+        'font': '黑体',
+        'size_pt': 12,
+        'bold': True,
+        'alignment': 'left',
+        'space_before_pt': 6,
+        'space_after_pt': 3
+    },
+    'normal': {
+        'font': '仿宋',
+        'size_pt': 12,
+        'bold': False,
+        'alignment': 'justify',
+        'first_indent_chars': 2,
+        'line_spacing': 1.5
+    }
+}
+
+
+# ==================== 配置加载函数 ====================
+
+def load_style_config(style_config_path=None):
+    """加载样式配置
+    
+    Args:
+        style_config_path: 样式配置文件路径，默认使用 uploads/style_config.json
+        
+    Returns:
+        样式配置字典
+    """
+    if style_config_path is None:
+        # 默认从 uploads 目录加载
+        base_dir = Path(__file__).parent
+        style_config_path = base_dir / 'web_system' / 'uploads' / 'style_config.json'
+    
+    if os.path.exists(style_config_path):
+        with open(style_config_path, 'r', encoding='utf-8') as f:
+            styles = json.load(f)
+        print(f'已加载样式配置：{style_config_path}')
+        return styles
+    else:
+        print(f'未找到样式配置文件，使用默认样式：{style_config_path}')
+        return DEFAULT_STYLES
+
+
+def load_chapter_config(chapters_path=None):
+    """加载章节目录配置
+    
+    Args:
+        chapters_path: 章节目录配置文件路径，默认使用 uploads/chapter_config.json
+        
+    Returns:
+        章节目录列表
+    """
+    if chapters_path is None:
+        # 默认从 uploads 目录加载
+        base_dir = Path(__file__).parent
+        chapters_path = base_dir / 'web_system' / 'uploads' / 'chapter_config.json'
+    
+    if os.path.exists(chapters_path):
+        with open(chapters_path, 'r', encoding='utf-8') as f:
+            chapters = json.load(f)
+        print(f'已加载章节目录配置：{chapters_path}')
+        print(f'  共 {len(chapters)} 个一级章节')
+        return chapters
+    else:
+        print(f'未找到章节目录配置文件：{chapters_path}')
+        return []
 
 
 # ==================== 样式函数 ====================
 
-def add_heading_1(doc, text):
-    """添加一级标题 - 黑体 二号 18pt"""
-    p = doc.add_heading(text, level=1)
-    p.paragraph_format.space_before = Pt(24)
-    p.paragraph_format.space_after = Pt(12)
-    run = p.runs[0]
-    run.font.size = Pt(18)
-    run.font.bold = True
-    run.font.name = '黑体'
-    run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
+def add_heading(doc, text, level, styles=None):
+    """添加标题 - 根据配置的样式动态渲染
+    
+    Args:
+        doc: Document 对象
+        text: 标题文本
+        level: 标题层级 (1-4)
+        styles: 样式配置字典
+    """
+    if styles is None:
+        styles = DEFAULT_STYLES
+    
+    # 根据层级获取样式配置
+    style_key = f'heading{level}'
+    style = styles.get(style_key, DEFAULT_STYLES.get(style_key, {}))
+    
+    p = doc.add_paragraph()
+    
+    # 设置对齐方式
+    alignment = style.get('alignment', 'left')
+    if alignment == 'center':
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    elif alignment == 'right':
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    elif alignment == 'justify':
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    else:
+        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    
+    # 设置间距
+    space_before = style.get('space_before_pt', 0)
+    space_after = style.get('space_after_pt', 0)
+    if space_before:
+        p.paragraph_format.space_before = Pt(space_before)
+    if space_after:
+        p.paragraph_format.space_after = Pt(space_after)
+    
+    # 添加文本
+    run = p.add_run(text)
+    
+    # 应用字体样式
+    font_name = style.get('font', '黑体')
+    font_size = style.get('size_pt', 12)
+    bold = style.get('bold', True)
+    
+    run.font.name = font_name
+    run.font.size = Pt(font_size)
+    run.font.bold = bold
+    run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+    
     return p
 
-def add_heading_2(doc, text):
-    """添加二级标题 - 黑体 三号 15pt"""
-    p = doc.add_heading(text, level=2)
-    p.paragraph_format.space_before = Pt(18)
-    p.paragraph_format.space_after = Pt(6)
-    run = p.runs[0]
-    run.font.size = Pt(15)
-    run.font.bold = True
-    run.font.name = '黑体'
-    run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
-    return p
 
-def add_heading_3(doc, text):
-    """添加三级标题 - 黑体 小三 14pt"""
-    p = doc.add_heading(text, level=3)
-    p.paragraph_format.space_before = Pt(12)
-    p.paragraph_format.space_after = Pt(6)
-    run = p.runs[0]
-    run.font.size = Pt(14)
-    run.font.bold = True
-    run.font.name = '黑体'
-    run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
-    return p
+def add_heading_1(doc, text, styles=None):
+    """添加一级标题 - 黑体 二号 18pt（兼容旧接口）"""
+    return add_heading(doc, text, level=1, styles=styles)
 
-def add_heading_4(doc, text):
-    """添加四级标题 - 黑体 四号 12pt"""
-    p = doc.add_heading(text, level=4)
-    p.paragraph_format.space_before = Pt(6)
-    p.paragraph_format.space_after = Pt(3)
-    run = p.runs[0]
-    run.font.size = Pt(12)
-    run.font.bold = True
-    run.font.name = '黑体'
-    run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
-    return p
 
-def add_normal(doc, text):
-    """添加正文段落 - 仿宋 小四 12pt，首行缩进 2 字符"""
+def add_heading_2(doc, text, styles=None):
+    """添加二级标题 - 黑体 三号 15pt（兼容旧接口）"""
+    return add_heading(doc, text, level=2, styles=styles)
+
+
+def add_heading_3(doc, text, styles=None):
+    """添加三级标题 - 黑体 小三 14pt（兼容旧接口）"""
+    return add_heading(doc, text, level=3, styles=styles)
+
+
+def add_heading_4(doc, text, styles=None):
+    """添加四级标题 - 黑体 四号 12pt（兼容旧接口）"""
+    return add_heading(doc, text, level=4, styles=styles)
+
+
+def add_normal(doc, text, styles=None):
+    """添加正文段落 - 根据配置的样式动态渲染
+    
+    Args:
+        doc: Document 对象
+        text: 段落文本
+        styles: 样式配置字典
+    """
+    if styles is None:
+        styles = DEFAULT_STYLES
+    
+    style = styles.get('normal', DEFAULT_STYLES.get('normal', {}))
+    
     paragraphs = text.split('\n')
-    for i, para in enumerate(paragraphs):
-        if not para.strip():
+    for para_text in paragraphs:
+        if not para_text.strip():
             continue
+        
         p = doc.add_paragraph()
-        p.paragraph_format.line_spacing = Pt(28)
-        p.paragraph_format.first_line_indent = Cm(0.74)
-        p.text = para
-        run = p.runs[0] if p.runs else p.add_run('')
-        run.font.size = Pt(12)
-        run.font.name = '仿宋'
-        run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+        
+        # 设置行距
+        line_spacing = style.get('line_spacing', 1.5)
+        p.paragraph_format.line_spacing = line_spacing
+        
+        # 设置首行缩进
+        first_indent_chars = style.get('first_indent_chars', 2)
+        if first_indent_chars > 0:
+            p.paragraph_format.first_line_indent = Cm(first_indent_chars * 0.37)
+        
+        # 添加文本
+        run = p.add_run(para_text)
+        
+        # 应用字体样式
+        font_name = style.get('font', '仿宋')
+        font_size = style.get('size_pt', 12)
+        bold = style.get('bold', False)
+        
+        run.font.name = font_name
+        run.font.size = Pt(font_size)
+        run.font.bold = bold
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
 
 
 # ==================== 文档结构函数 ====================
 
-def add_title_page(doc, title='良熟新苑未来社区建设项目', subtitle='建设方案', 
-                   builder='建设单位：良熟社区居委会', 
-                   compiler='编制单位：数字科技有限公司',
-                   date='编制日期：2026 年 3 月'):
-    """添加封面页"""
+def add_title_page(doc, project_info=None, styles=None):
+    """添加封面页 - 根据配置的样式动态渲染
+    
+    Args:
+        doc: Document 对象
+        project_info: 项目信息字典，包含 name, org_name 等
+        styles: 样式配置字典
+    """
+    if styles is None:
+        styles = DEFAULT_STYLES
+    
+    if project_info is None:
+        project_info = {
+            'name': '建设项目',
+            'subtitle': '可行性研究报告',
+            'org_name': 'XX 单位',
+            'compiler': 'XX 数字科技有限公司',
+            'date': None
+        }
+    
+    # 添加空白行（约 8 行）
     for _ in range(8):
         doc.add_paragraph()
     
-    title_para = doc.add_paragraph(title)
+    # 主标题
+    title = project_info.get('name', '建设项目')
+    title_para = doc.add_paragraph()
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = title_para.runs[0]
-    run.font.size = Pt(26)
-    run.font.bold = True
-    run.font.name = '黑体'
+    run = title_para.add_run(title)
+    
+    # 使用封面标题样式（如果没有则使用 heading1）
+    cover_style = styles.get('cover_title', styles.get('heading1', {}))
+    run.font.size = Pt(cover_style.get('size_pt', 26))
+    run.font.bold = cover_style.get('bold', True)
+    run.font.name = cover_style.get('font', '黑体')
     run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
     
+    # 副标题
+    subtitle = project_info.get('subtitle', '可行性研究报告')
     if subtitle:
         for _ in range(3):
             doc.add_paragraph()
-        sub_para = doc.add_paragraph(subtitle)
+        sub_para = doc.add_paragraph()
         sub_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = sub_para.runs[0]
-        run.font.size = Pt(16)
-        run.font.name = '楷体'
+        run = sub_para.add_run(subtitle)
+        
+        cover_sub_style = styles.get('cover_subtitle', styles.get('heading2', {}))
+        run.font.size = Pt(cover_sub_style.get('size_pt', 16))
+        run.font.name = cover_sub_style.get('font', '楷体')
         run._element.rPr.rFonts.set(qn('w:eastAsia'), '楷体')
     
+    # 添加空白行（约 12 行）
     for _ in range(12):
         doc.add_paragraph()
     
+    # 建设单位
+    builder = project_info.get('org_name', 'XX 单位')
     if builder:
-        p = doc.add_paragraph(builder)
+        p = doc.add_paragraph(f'建设单位：{builder}')
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.runs[0].font.size = Pt(12)
+        p.runs[0].font.name = '楷体'
+        p.runs[0]._element.rPr.rFonts.set(qn('w:eastAsia'), '楷体')
     
+    # 编制单位
+    compiler = project_info.get('compiler', 'XX 数字科技有限公司')
     if compiler:
-        p = doc.add_paragraph(compiler)
+        p = doc.add_paragraph(f'编制单位：{compiler}')
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p.runs[0].font.size = Pt(12)
+        p.runs[0].font.name = '楷体'
+        p.runs[0]._element.rPr.rFonts.set(qn('w:eastAsia'), '楷体')
     
-    if date:
-        p = doc.add_paragraph(date)
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.runs[0].font.size = Pt(12)
+    # 日期
+    date = project_info.get('date')
+    if not date:
+        date = '编制日期：2026 年 3 月'
+    p = doc.add_paragraph(date)
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.runs[0].font.size = Pt(12)
+    p.runs[0].font.name = '楷体'
+    p.runs[0]._element.rPr.rFonts.set(qn('w:eastAsia'), '楷体')
     
     doc.add_page_break()
 
 
-def add_editor_list(doc):
-    """添加编审人员名单"""
+def add_editor_list(doc, styles=None):
+    """添加编审人员名单
+    
+    Args:
+        doc: Document 对象
+        styles: 样式配置字典
+    """
+    if styles is None:
+        styles = DEFAULT_STYLES
+    
+    # 标题
     title = doc.add_paragraph('项目编审人员名单')
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title.runs[0].font.bold = True
     title.runs[0].font.size = Pt(16)
+    title.runs[0].font.name = '黑体'
+    title.runs[0]._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
     
     doc.add_paragraph()
     
+    # 编审人员名单（使用占位符）
     items = [
         '项目负责：×××',
         '编制小组：×××、×××、×××',
@@ -150,19 +355,39 @@ def add_editor_list(doc):
     doc.add_page_break()
 
 
-def add_toc(doc, chapters):
-    """添加目录"""
-    add_heading_1(doc, '目录')
+def add_toc(doc, chapters, styles=None):
+    """添加目录页
+
+    Args:
+        doc: Document 对象
+        chapters: 章节树列表
+        styles: 样式配置字典
+    """
+    if styles is None:
+        styles = DEFAULT_STYLES
+
+    # 目录标题（使用一级标题样式）
+    add_heading(doc, '目录', level=1, styles=styles)
     doc.add_paragraph()
-    
+
     def render_chapters(nodes, level=0):
         for node in nodes:
             indent = '  ' * level
-            p = doc.add_paragraph(f"{indent}{node['number']} {node['title']}")
+            p = doc.add_paragraph(f"{indent}{node.get('number', '')} {node.get('title', '')}")
             p.paragraph_format.left_indent = Cm(0.74 * level)
-            if node.get('children'):
-                render_chapters(node['children'], level + 1)
-    
+
+            # 设置目录项样式（使用正文样式）
+            normal_style = styles.get('normal', DEFAULT_STYLES.get('normal', {}))
+            run = p.runs[0] if p.runs else p.add_run('')
+            run.font.name = normal_style.get('font', '宋体')
+            run.font.size = Pt(normal_style.get('size_pt', 10.5))
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+
+            # 递归渲染子节点（检查 children 是否存在且非空）
+            children = node.get('children')
+            if children is not None and len(children) > 0:
+                render_chapters(children, level + 1)
+
     render_chapters(chapters)
     doc.add_page_break()
 
@@ -223,83 +448,148 @@ def generate_content_for_chapter(chapter_title):
 
 # ==================== 主生成函数 ====================
 
-def generate_plan_from_config(chapters_path, output_path):
+def generate_plan_from_config(chapters=None, styles=None, project_info=None, 
+                               chapters_path=None, styles_path=None, output_path=None):
     """
-    根据保存的目录配置生成 Word 文档
+    从"目录与样式配置"中加载配置，生成 Word 文档
     
     参数:
-        chapters_path: chapter_config.json 路径
-        output_path: 输出文件路径
+        chapters: 章节目录列表（可选，如果提供则直接使用）
+        styles: 样式配置字典（可选，如果提供则直接使用）
+        project_info: 项目信息字典（可选）
+        chapters_path: 章节目录配置文件路径（可选）
+        styles_path: 样式配置文件路径（可选）
+        output_path: 输出文件路径（可选）
+    
+    返回:
+        生成的文档路径
     """
-    # 1. 加载目录配置
-    if not os.path.exists(chapters_path):
-        print(f'错误：目录配置文件不存在 {chapters_path}')
-        return None
+    # 1. 加载章节目录配置
+    if chapters is None:
+        chapters = load_chapter_config(chapters_path)
+        if not chapters:
+            print('错误：章节目录配置为空，请确保已保存目录配置')
+            return None
     
-    with open(chapters_path, 'r', encoding='utf-8') as f:
-        chapters = json.load(f)
+    # 2. 加载样式配置
+    if styles is None:
+        styles = load_style_config(styles_path)
     
-    print(f'加载目录配置：{len(chapters)} 个一级章节')
+    print(f'使用样式配置：{list(styles.keys())}')
     
-    # 2. 创建文档
+    # 3. 创建文档
     doc = Document()
     section = doc.sections[0]
     section.page_width = Cm(21)
     section.page_height = Cm(29.7)
     
-    # 3. 封面
+    # 4. 封面
     print('生成封面...')
-    add_title_page(doc)
+    if project_info is None:
+        project_info = {
+            'name': '建设项目',
+            'subtitle': '可行性研究报告',
+            'org_name': 'XX 单位',
+            'compiler': 'XX 数字科技有限公司'
+        }
+    add_title_page(doc, project_info=project_info, styles=styles)
     
-    # 4. 编审名单
+    # 5. 编审名单
     print('生成编审名单...')
-    add_editor_list(doc)
+    add_editor_list(doc, styles=styles)
     
-    # 5. 目录
+    # 6. 目录
     print('生成目录...')
-    add_toc(doc, chapters)
+    add_toc(doc, chapters, styles=styles)
     
-    # 6. 正文 - 严格按照目录配置生成
+    # 7. 正文 - 严格按照目录配置生成
     print('生成正文...')
     
     def generate_chapter(node, level=1):
-        """递归生成章节"""
-        # 添加标题
-        if level == 1:
-            add_heading_1(doc, node['title'])
-        elif level == 2:
-            add_heading_2(doc, node['title'])
-        elif level == 3:
-            add_heading_3(doc, node['title'])
-        elif level == 4:
-            add_heading_4(doc, node['title'])
+        """递归生成章节 - 严格按照配置的层级结构"""
+        node_title = node.get('title', '')
+        node_number = node.get('number', '')
+        node_level = node.get('level', level)  # 使用配置中的 level
+        children = node.get('children')
         
-        # 生成内容（只在叶子节点生成）
-        if not node.get('children'):
-            content = generate_content_for_chapter(node['title'])
-            add_normal(doc, content)
-        else:
+        # 添加标题（使用配置的样式）
+        if node_level <= 4:
+            add_heading(doc, f"{node_number} {node_title}", level=node_level, styles=styles)
+        
+        # 判断是否有子节点
+        if children is not None and len(children) > 0:
             # 有子节点，递归处理
-            for child in node['children']:
-                generate_chapter(child, level + 1)
+            for child in children:
+                generate_chapter(child, level=node_level + 1)
+        else:
+            # 叶子节点，生成内容
+            content = generate_content_for_chapter(node_title)
+            add_normal(doc, content, styles=styles)
     
     for chapter in chapters:
         generate_chapter(chapter, level=1)
         doc.add_page_break()
     
-    # 7. 保存文档
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    # 8. 保存文档
+    if output_path is None:
+        timestamp = __import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_path = os.path.join(os.path.dirname(__file__), 'outputs', f'建设方案_{timestamp}.docx')
+    
+    os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
     doc.save(output_path)
     print(f'文档已保存至：{output_path}')
     return output_path
 
 
-def main():
-    # 默认路径
-    chapters_path = r'e:\Qwen\xmjl\web_system\uploads\chapter_config.json'
-    output_path = r'e:\Qwen\xmjl\outputs\建设方案_' + __import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S') + '.docx'
+def generate_plan_with_data(chapters, styles, project_info=None, output_path=None):
+    """
+    使用传入的数据直接生成文档（不加载配置文件）
+    用于从 web_system 直接调用生成
     
-    generate_plan_from_config(chapters_path, output_path)
+    参数:
+        chapters: 章节目录列表
+        styles: 样式配置字典
+        project_info: 项目信息字典（可选）
+        output_path: 输出文件路径（可选）
+    
+    返回:
+        生成的文档路径
+    """
+    return generate_plan_from_config(
+        chapters=chapters,
+        styles=styles,
+        project_info=project_info,
+        output_path=output_path
+    )
+
+
+def main():
+    """主函数 - 从配置文件加载并生成文档"""
+    # 使用默认路径加载配置
+    chapters = load_chapter_config()
+    styles = load_style_config()
+    
+    if not chapters:
+        print('错误：未找到章节目录配置，请先在 web 系统中保存目录配置')
+        return
+    
+    # 设置项目信息（后续可以从需求文档中提取）
+    project_info = {
+        'name': '良熟新苑未来社区建设项目',
+        'subtitle': '可行性研究报告',
+        'org_name': '良熟社区居委会',
+        'compiler': '数字科技有限公司'
+    }
+    
+    # 生成文档
+    output_path = generate_plan_from_config(
+        chapters=chapters,
+        styles=styles,
+        project_info=project_info
+    )
+    
+    if output_path:
+        print(f'\n生成完成！文档路径：{output_path}')
 
 
 if __name__ == '__main__':
