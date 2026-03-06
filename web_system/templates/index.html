@@ -561,16 +561,21 @@
                 
                 <div class="form-group full-width">
                     <label>✏️ 生成要求 <span class="hint">（可选，补充说明）</span></label>
-                    <textarea 
-                        id="requirementText" 
-                        name="requirement" 
+                    <textarea
+                        id="requirementText"
+                        name="requirement"
                         placeholder="请输入额外的生成要求，例如：&#10;- 重点突出邻里、健康、治理、低碳四大场景&#10;- 增加物业服务模块&#10;- 需要与区平台对接&#10;- 项目总投资控制在 1000 万以内&#10;等等..."
                     ></textarea>
                 </div>
-                
-                <button type="submit" class="btn btn-primary btn-block" id="submitBtn">
-                    🚀 开始生成报告
-                </button>
+
+                <div class="form-group full-width" style="display: flex; gap: 10px;">
+                    <button type="submit" class="btn btn-primary" id="submitBtn" style="flex: 1;">
+                        🚀 开始生成报告
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="generateCodeBtn" style="flex: 1;">
+                        📝 生成代码
+                    </button>
+                </div>
             </form>
             
             <div class="loading" id="loading">
@@ -865,6 +870,147 @@
             }
         });
 
+        // 生成代码按钮事件
+        document.getElementById('generateCodeBtn').addEventListener('click', async function() {
+            const generateCodeBtn = this;
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultMessage = document.getElementById('resultMessage');
+            const downloadSection = document.getElementById('downloadSection');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+
+            // 重置状态
+            result.className = 'result';
+            downloadSection.innerHTML = '';
+            progressBar.style.width = '0%';
+
+            const formData = new FormData(document.getElementById('generateForm'));
+            const templateType = formData.get('template_type') || 'future_community';
+
+            // 显示加载状态
+            generateCodeBtn.disabled = true;
+            loading.classList.add('show');
+            progressText.textContent = '正在生成代码...';
+
+            try {
+                const response = await fetch('/api/generate_code', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // 代码生成成功
+                    progressBar.style.width = '100%';
+                    progressText.textContent = '代码生成成功！';
+
+                    loading.classList.remove('show');
+                    generateCodeBtn.disabled = false;
+
+                    result.className = 'result';
+                    resultTitle.textContent = '✅ 代码生成成功';
+                    resultMessage.textContent = '代码文件：' + data.code_filename;
+
+                    // 显示代码预览
+                    const previewDiv = document.createElement('div');
+                    previewDiv.style.marginTop = '15px';
+                    previewDiv.innerHTML = `
+                        <details>
+                            <summary style="cursor: pointer; color: #667eea; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                                📄 查看代码预览
+                            </summary>
+                            <pre style="background: #2d2d2d; color: #f8f8f2; padding: 15px; border-radius: 6px; overflow: auto; max-height: 400px; margin-top: 10px; font-size: 12px;">${escapeHtml(data.code_preview)}</pre>
+                        </details>
+                    `;
+                    downloadSection.appendChild(previewDiv);
+
+                    // 添加执行按钮
+                    const execBtn = document.createElement('button');
+                    execBtn.textContent = '▶️ 执行代码生成文档';
+                    execBtn.className = 'btn btn-primary';
+                    execBtn.style.marginTop = '10px';
+                    execBtn.onclick = async function() {
+                        await executeCode(data.code_filename);
+                    };
+                    downloadSection.appendChild(execBtn);
+
+                } else {
+                    // 生成失败
+                    loading.classList.remove('show');
+                    generateCodeBtn.disabled = false;
+
+                    result.className = 'result error';
+                    resultTitle.textContent = '❌ 生成失败';
+                    resultMessage.textContent = data.message || '未知错误';
+                }
+            } catch (error) {
+                loading.classList.remove('show');
+                generateCodeBtn.disabled = false;
+
+                result.className = 'result error';
+                resultTitle.textContent = '❌ 生成失败';
+                resultMessage.textContent = '网络错误：' + error.message;
+            }
+        });
+
+        // 执行代码生成文档
+        async function executeCode(codeFilename) {
+            const result = document.getElementById('result');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultMessage = document.getElementById('resultMessage');
+            const downloadSection = document.getElementById('downloadSection');
+            const progressText = document.getElementById('progressText');
+            const progressBar = document.getElementById('progressBar');
+
+            progressText.textContent = '正在执行代码...';
+            progressBar.style.width = '50%';
+
+            try {
+                const response = await fetch('/api/execute_code', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ code_filename: codeFilename })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    progressBar.style.width = '100%';
+                    progressText.textContent = '文档生成成功！';
+
+                    resultTitle.textContent = '✅ 文档生成成功';
+                    resultMessage.textContent = '文件：' + data.output_file;
+
+                    // 添加下载链接
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = data.download_url;
+                    downloadLink.textContent = '📥 下载生成的文档';
+                    downloadLink.className = 'btn btn-success';
+                    downloadLink.style.marginTop = '10px';
+                    downloadSection.innerHTML = '';
+                    downloadSection.appendChild(downloadLink);
+                } else {
+                    resultTitle.textContent = '❌ 执行失败';
+                    resultMessage.textContent = data.message || '未知错误';
+                }
+            } catch (error) {
+                resultTitle.textContent = '❌ 执行失败';
+                resultMessage.textContent = '网络错误：' + error.message;
+            }
+        }
+
+        // HTML 转义函数
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         // ========== 目录与样式配置功能 ==========
         
         let currentChapters = [];  // 当前扫描/编辑的章节目录
@@ -923,103 +1069,309 @@
             if (!parentElement) {
                 container.innerHTML = '';
             }
-            
+
             if (!chapters || chapters.length === 0) {
                 if (!parentElement) {
                     container.innerHTML = '<p style="color:#999;text-align:center;padding:40px;">暂无章节</p>';
                 }
                 return;
             }
-            
+
             const ul = document.createElement('ul');
-            ul.className = 'chapter-tree';
-            if (level > 0) ul.style.marginLeft = '20px';
-            
+            ul.style.listStyle = 'none';
+            ul.style.padding = '0';
+            ul.style.margin = '0';
+            if (level > 0) {
+                ul.style.marginLeft = '20px';
+            }
+
             chapters.forEach((chapter, index) => {
                 const li = document.createElement('li');
-                li.className = 'chapter-item';
-                li.dataset.level = level;
-                li.dataset.index = index;
-                
+                li.style.padding = '3px 0';
+                li.style.borderBottom = '1px solid #f0f0f0';
+
                 const itemContent = document.createElement('div');
-                itemContent.className = 'chapter-item-content';
+                itemContent.style.display = 'flex';
+                itemContent.style.alignItems = 'center';
+                itemContent.style.padding = '5px 8px';
+                itemContent.style.cursor = 'pointer';
                 itemContent.style.paddingLeft = (level * 20) + 'px';
                 
+                itemContent.onmouseover = function() {
+                    this.style.background = '#f0f7ff';
+                };
+                itemContent.onmouseout = function() {
+                    this.style.background = '';
+                };
+
                 // 展开/收起按钮
                 const toggleBtn = document.createElement('span');
-                toggleBtn.className = 'chapter-toggle';
-                toggleBtn.textContent = chapter.children && chapter.children.length > 0 ? '▼' : '▶';
+                toggleBtn.textContent = chapter.children && chapter.children.length > 0 ? '▼' : '•';
                 toggleBtn.style.cursor = 'pointer';
                 toggleBtn.style.width = '16px';
                 toggleBtn.style.display = 'inline-block';
-                toggleBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    const childUl = li.querySelector('ul');
-                    if (childUl) {
-                        childUl.style.display = childUl.style.display === 'none' ? 'block' : 'none';
-                        toggleBtn.textContent = childUl.style.display === 'none' ? '▶' : '▼';
-                    }
-                };
+                toggleBtn.style.marginRight = '5px';
+                toggleBtn.style.color = '#666';
                 
                 // 章节编号和标题
                 const titleSpan = document.createElement('span');
-                titleSpan.className = 'chapter-title';
                 titleSpan.textContent = `${chapter.number} ${chapter.title}`;
-                titleSpan.style.marginLeft = '5px';
-                titleSpan.style.cursor = 'pointer';
-                
+                titleSpan.style.flex = '1';
+                titleSpan.style.fontSize = '13px';
+                titleSpan.style.color = '#333';
+
                 // 编辑按钮
                 const editBtn = document.createElement('button');
-                editBtn.className = 'btn-sm btn-edit';
                 editBtn.textContent = '编辑';
+                editBtn.style.padding = '2px 6px';
+                editBtn.style.fontSize = '11px';
+                editBtn.style.border = 'none';
+                editBtn.style.borderRadius = '3px';
+                editBtn.style.background = '#3498db';
+                editBtn.style.color = 'white';
+                editBtn.style.cursor = 'pointer';
                 editBtn.style.marginLeft = '10px';
+                editBtn.style.display = 'none';  // 默认隐藏，悬停显示
                 editBtn.onclick = (e) => {
                     e.stopPropagation();
                     editChapter(chapter, index, level);
                 };
-                
+
                 // 删除按钮
                 const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'btn-sm btn-delete';
                 deleteBtn.textContent = '删除';
+                deleteBtn.style.padding = '2px 6px';
+                deleteBtn.style.fontSize = '11px';
+                deleteBtn.style.border = 'none';
+                deleteBtn.style.borderRadius = '3px';
+                deleteBtn.style.background = '#e74c3c';
+                deleteBtn.style.color = 'white';
+                deleteBtn.style.cursor = 'pointer';
                 deleteBtn.style.marginLeft = '5px';
+                deleteBtn.style.display = 'none';  // 默认隐藏，悬停显示
                 deleteBtn.onclick = (e) => {
                     e.stopPropagation();
                     deleteChapter(index, level);
                 };
-                
+
                 // 添加子节点按钮
                 const addChildBtn = document.createElement('button');
-                addChildBtn.className = 'btn-sm btn-add';
                 addChildBtn.textContent = '+ 子项';
+                addChildBtn.style.padding = '2px 6px';
+                addChildBtn.style.fontSize = '11px';
+                addChildBtn.style.border = 'none';
+                addChildBtn.style.borderRadius = '3px';
+                addChildBtn.style.background = '#27ae60';
+                addChildBtn.style.color = 'white';
+                addChildBtn.style.cursor = 'pointer';
                 addChildBtn.style.marginLeft = '5px';
+                addChildBtn.style.display = 'none';  // 默认隐藏，悬停显示
                 addChildBtn.onclick = (e) => {
                     e.stopPropagation();
                     addChildChapter(chapter, index, level);
                 };
-                
+
                 itemContent.appendChild(toggleBtn);
                 itemContent.appendChild(titleSpan);
                 itemContent.appendChild(editBtn);
                 itemContent.appendChild(deleteBtn);
                 itemContent.appendChild(addChildBtn);
-                
+
                 li.appendChild(itemContent);
-                
-                // 递归渲染子节点
+
+                // 处理子章节
                 if (chapter.children && chapter.children.length > 0) {
-                    const childContainer = document.createElement('div');
-                    childContainer.style.display = 'block';
-                    li.appendChild(childContainer);
-                    renderChapterTree(chapter.children, level + 1, childContainer);
+                    // 创建子章节容器
+                    const childDiv = document.createElement('div');
+                    childDiv.style.display = 'block';
+                    
+                    // 递归渲染子章节
+                    renderChapterTreeInternal(chapter.children, level + 1, childDiv);
+                    
+                    li.appendChild(childDiv);
+                    
+                    // 点击展开/收起
+                    toggleBtn.style.cursor = 'pointer';
+                    itemContent.style.cursor = 'pointer';
+                    
+                    itemContent.onclick = (e) => {
+                        e.stopPropagation();
+                        if (childDiv.style.display === 'none') {
+                            childDiv.style.display = 'block';
+                            toggleBtn.textContent = '▼';
+                        } else {
+                            childDiv.style.display = 'none';
+                            toggleBtn.textContent = '▶';
+                        }
+                    };
+                } else {
+                    // 没有子章节，点击时选中
+                    itemContent.onclick = (e) => {
+                        e.stopPropagation();
+                        // 可以在这里添加选中逻辑
+                    };
                 }
-                
+
+                // 悬停显示操作按钮
+                itemContent.onmouseover = function() {
+                    this.style.background = '#f0f7ff';
+                    editBtn.style.display = 'inline-block';
+                    deleteBtn.style.display = 'inline-block';
+                    addChildBtn.style.display = 'inline-block';
+                };
+                itemContent.onmouseout = function() {
+                    this.style.background = '';
+                    editBtn.style.display = 'none';
+                    deleteBtn.style.display = 'none';
+                    addChildBtn.style.display = 'none';
+                };
+
                 ul.appendChild(li);
             });
-            
+
             if (!parentElement) {
                 container.appendChild(ul);
             }
+        }
+        
+        // 内部渲染函数（用于递归）
+        function renderChapterTreeInternal(chapters, level, parentElement) {
+            if (!chapters || chapters.length === 0) {
+                return;
+            }
+
+            const ul = document.createElement('ul');
+            ul.style.listStyle = 'none';
+            ul.style.padding = '0';
+            ul.style.margin = '0';
+            ul.style.marginLeft = '15px';
+
+            chapters.forEach((chapter, index) => {
+                const li = document.createElement('li');
+                li.style.padding = '3px 0';
+                li.style.borderBottom = '1px solid #f0f0f0';
+
+                const itemContent = document.createElement('div');
+                itemContent.style.display = 'flex';
+                itemContent.style.alignItems = 'center';
+                itemContent.style.padding = '5px 8px';
+                itemContent.style.cursor = 'pointer';
+                itemContent.style.paddingLeft = (level * 20) + 'px';
+                
+                itemContent.onmouseover = function() {
+                    this.style.background = '#f0f7ff';
+                };
+                itemContent.onmouseout = function() {
+                    this.style.background = '';
+                };
+
+                const toggleBtn = document.createElement('span');
+                toggleBtn.textContent = chapter.children && chapter.children.length > 0 ? '▼' : '•';
+                toggleBtn.style.cursor = 'pointer';
+                toggleBtn.style.width = '16px';
+                toggleBtn.style.display = 'inline-block';
+                toggleBtn.style.marginRight = '5px';
+                toggleBtn.style.color = '#666';
+
+                const titleSpan = document.createElement('span');
+                titleSpan.textContent = `${chapter.number} ${chapter.title}`;
+                titleSpan.style.flex = '1';
+                titleSpan.style.fontSize = '13px';
+                titleSpan.style.color = '#333';
+
+                const editBtn = document.createElement('button');
+                editBtn.textContent = '编辑';
+                editBtn.style.padding = '2px 6px';
+                editBtn.style.fontSize = '11px';
+                editBtn.style.border = 'none';
+                editBtn.style.borderRadius = '3px';
+                editBtn.style.background = '#3498db';
+                editBtn.style.color = 'white';
+                editBtn.style.cursor = 'pointer';
+                editBtn.style.marginLeft = '10px';
+                editBtn.style.display = 'none';
+                editBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    editChapter(chapter, index, level);
+                };
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = '删除';
+                deleteBtn.style.padding = '2px 6px';
+                deleteBtn.style.fontSize = '11px';
+                deleteBtn.style.border = 'none';
+                deleteBtn.style.borderRadius = '3px';
+                deleteBtn.style.background = '#e74c3c';
+                deleteBtn.style.color = 'white';
+                deleteBtn.style.cursor = 'pointer';
+                deleteBtn.style.marginLeft = '5px';
+                deleteBtn.style.display = 'none';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteChapter(index, level);
+                };
+
+                const addChildBtn = document.createElement('button');
+                addChildBtn.textContent = '+ 子项';
+                addChildBtn.style.padding = '2px 6px';
+                addChildBtn.style.fontSize = '11px';
+                addChildBtn.style.border = 'none';
+                addChildBtn.style.borderRadius = '3px';
+                addChildBtn.style.background = '#27ae60';
+                addChildBtn.style.color = 'white';
+                addChildBtn.style.cursor = 'pointer';
+                addChildBtn.style.marginLeft = '5px';
+                addChildBtn.style.display = 'none';
+                addChildBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    addChildChapter(chapter, index, level);
+                };
+
+                itemContent.appendChild(toggleBtn);
+                itemContent.appendChild(titleSpan);
+                itemContent.appendChild(editBtn);
+                itemContent.appendChild(deleteBtn);
+                itemContent.appendChild(addChildBtn);
+
+                li.appendChild(itemContent);
+
+                // 处理子章节
+                if (chapter.children && chapter.children.length > 0) {
+                    const childDiv = document.createElement('div');
+                    childDiv.style.display = 'block';
+                    renderChapterTreeInternal(chapter.children, level + 1, childDiv);
+                    li.appendChild(childDiv);
+                    
+                    itemContent.onclick = (e) => {
+                        e.stopPropagation();
+                        if (childDiv.style.display === 'none') {
+                            childDiv.style.display = 'block';
+                            toggleBtn.textContent = '▼';
+                        } else {
+                            childDiv.style.display = 'none';
+                            toggleBtn.textContent = '▶';
+                        }
+                    };
+                }
+
+                // 悬停显示操作按钮
+                itemContent.onmouseover = function() {
+                    this.style.background = '#f0f7ff';
+                    editBtn.style.display = 'inline-block';
+                    deleteBtn.style.display = 'inline-block';
+                    addChildBtn.style.display = 'inline-block';
+                };
+                itemContent.onmouseout = function() {
+                    this.style.background = '';
+                    editBtn.style.display = 'none';
+                    deleteBtn.style.display = 'none';
+                    addChildBtn.style.display = 'none';
+                };
+
+                ul.appendChild(li);
+            });
+
+            parentElement.appendChild(ul);
         }
         
         // 编辑章节

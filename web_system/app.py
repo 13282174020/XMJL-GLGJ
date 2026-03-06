@@ -281,6 +281,44 @@ MODEL_CONFIGS = {
     'mini-max': {'name': 'MiniMax', 'provider': 'MiniMax'}
 }
 
+# 章节分类配置
+# 信息提取类：直接从需求文档中提取信息，不需要 AI 生成
+# 内容撰写类：需要 AI 根据模板和需求撰写内容
+CHAPTER_CATEGORIES = {
+    'info_extract': [  # 信息提取类章节
+        '项目名称', '项目建设单位', '负责人', '联系方式',
+        '建设工期', '总投资', '资金来源', '编制单位',
+        '项目概况', '建设单位', '项目负责', '实施机构',
+        '工期', '投资估算', '资金筹措'
+    ],
+    'content_write': [  # 内容撰写类章节
+        '必要性', '分析', '方案', '技术路线',
+        '效益分析', '风险分析', '结论', '建议',
+        '背景', '需求', '设计', '建设内容',
+        '系统', '安全', '环保', '节能',
+        '招标', '组织', '人员', '培训',
+        '进度', '财务', '评价', '市场',
+        '产品', '服务', '运营', '管理'
+    ]
+}
+
+
+def is_info_chapter(section_title):
+    """判断是否为信息提取类章节"""
+    for keyword in CHAPTER_CATEGORIES['info_extract']:
+        if keyword in section_title:
+            return True
+    return False
+
+
+def is_content_chapter(section_title):
+    """判断是否为内容撰写类章节"""
+    for keyword in CHAPTER_CATEGORIES['content_write']:
+        if keyword in section_title:
+            return True
+    return False
+
+
 # 模板类型配置
 TEMPLATE_TYPES = {
     'future_community': {
@@ -390,32 +428,226 @@ def clean_ai_content(content, section_title):
     """清理 AI 生成的内容，移除可能的标题行和 Markdown 格式"""
     if not content:
         return []
-    
+
     lines = content.split('\n')
     cleaned_lines = []
-    
+
     for line in lines:
         stripped = line.strip()
         if not stripped:
             continue
-        
+
         # 跳过可能是标题的行（包含小节标题的行）
         if stripped.startswith(section_title) or stripped.startswith('《' + section_title + '》'):
             continue
         if stripped.startswith('#') or stripped.startswith('##') or stripped.startswith('###'):
             continue
-        
+
         # 移除 Markdown 格式
         cleaned = stripped
         cleaned = re.sub(r'\*\*(.+?)\*\*', r'\1', cleaned)  # 移除 ** 粗体
         cleaned = re.sub(r'\*(.+?)\*', r'\1', cleaned)      # 移除 * 斜体
         cleaned = re.sub(r'`(.+?)`', r'\1', cleaned)        # 移除 ` 代码
         cleaned = re.sub(r'^[-•●]\s*', '', cleaned)         # 移除列表符号
-        
+
         if cleaned:
             cleaned_lines.append(cleaned)
-    
+
     return cleaned_lines
+
+
+def extract_info_from_requirement(section_title, requirement_content):
+    """从需求文档中提取信息类章节的内容"""
+    if not requirement_content:
+        return None
+    
+    # 项目名称
+    if '项目名称' in section_title:
+        patterns = [
+            r'项目名称 [：:]\s*([^\n]+)',
+            r'项目名称为 [：:]\s*([^\n]+)',
+            r'项目名称是 [：:]\s*([^\n]+)',
+            r'称 [：:]\s*([^\n]+)'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, requirement_content, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        # 尝试从第一行提取
+        first_line = requirement_content.strip().split('\n')[0]
+        if len(first_line) < 50 and '项目' in first_line:
+            return first_line
+    
+    # 建设单位
+    if '建设单位' in section_title or '项目实施单位' in section_title:
+        patterns = [
+            r'建设单位 [：:]\s*([^\n]+)',
+            r'业主单位 [：:]\s*([^\n]+)',
+            r'实施单位 [：:]\s*([^\n]+)',
+            r'项目单位 [：:]\s*([^\n]+)'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, requirement_content, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+    
+    # 负责人
+    if '负责人' in section_title or '联系人' in section_title:
+        patterns = [
+            r'负责人 [：:]\s*([^\n]+)',
+            r'联系人 [：:]\s*([^\n]+)',
+            r'项目负责 [人]?[：:]\s*([^\n]+)'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, requirement_content, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+    
+    # 联系方式/电话
+    if '联系' in section_title or '电话' in section_title or '方式' in section_title:
+        patterns = [
+            r'联系方式 [：:]\s*([^\n]+)',
+            r'联系电话 [：:]\s*([^\n]+)',
+            r'电话 [：:]\s*([^\n]+)',
+            r'手机 [：:]\s*([^\n]+)',
+            r'邮箱 [：:]\s*([^\n]+)'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, requirement_content, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+    
+    # 建设工期
+    if '工期' in section_title or '建设周期' in section_title:
+        patterns = [
+            r'建设工期 [：:]\s*([^\n]+)',
+            r'工期 [：:]\s*([^\n]+)',
+            r'建设周期 [：:]\s*([^\n]+)',
+            r'周期 [：:]\s*([^\n]+)',
+            r'([\d]+)[个]?[年月天]'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, requirement_content, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+    
+    # 总投资
+    if '投资' in section_title or '资金' in section_title:
+        patterns = [
+            r'总投资 [：:]\s*([^\n]+)',
+            r'投资估算 [：:]\s*([^\n]+)',
+            r'项目总投 [：:]\s*([^\n]+)',
+            r'([\d\.]+)\s*万?元'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, requirement_content, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+    
+    # 资金来源
+    if '资金来源' in section_title or '资金筹措' in section_title:
+        patterns = [
+            r'资金来源 [：:]\s*([^\n]+)',
+            r'资金筹措 [：:]\s*([^\n]+)',
+            r'出资 [：:]\s*([^\n]+)',
+            r'财政拨款|自筹|银行贷款|专项资金'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, requirement_content, re.IGNORECASE)
+            if match:
+                return match.group(0).strip()
+    
+    # 编制单位
+    if '编制' in section_title or '可研单位' in section_title:
+        patterns = [
+            r'编制单位 [：:]\s*([^\n]+)',
+            r'可研编制 [：:]\s*([^\n]+)',
+            r'咨询单位 [：:]\s*([^\n]+)'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, requirement_content, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+    
+    # 建设目标
+    if '建设目标' in section_title or '项目目标' in section_title:
+        patterns = [
+            r'建设目标 [：:]\s*([^\n]+)',
+            r'项目目标 [：:]\s*([^\n]+)',
+            r'目标 [：:]\s*([^\n]+)'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, requirement_content, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+    
+    # 建设规模
+    if '建设规模' in section_title or '规模' in section_title:
+        patterns = [
+            r'建设规模 [：:]\s*([^\n]+)',
+            r'项目规模 [：:]\s*([^\n]+)',
+            r'规模 [：:]\s*([^\n]+)'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, requirement_content, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+    
+    # 建设内容
+    if '建设内容' in section_title or '建设任务' in section_title:
+        patterns = [
+            r'建设内容 [：:]\s*([^\n]+)',
+            r'建设任务 [：:]\s*([^\n]+)',
+            r'主要建设内容 [：:]\s*([^\n]+)'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, requirement_content, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+    
+    return None
+
+
+def extract_template_example(section_title, template_content):
+    """从模板内容中提取该章节的参考示例"""
+    if not template_content:
+        return ""
+    
+    # 找到章节标题位置
+    title_pos = template_content.find(section_title)
+    if title_pos == -1:
+        # 尝试模糊匹配
+        for keyword in [section_title.split(' ')[-1] if ' ' in section_title else section_title]:
+            title_pos = template_content.find(keyword)
+            if title_pos != -1:
+                break
+    
+    if title_pos == -1:
+        return ""
+    
+    # 提取章节后面的内容（到下一个章节前）
+    next_chapter_pos = len(template_content)
+    
+    # 查找下一个章节标记
+    chapter_markers = ['\n\n', '\n', '。', '；']
+    for marker in chapter_markers:
+        pos = template_content.find(marker, title_pos + len(section_title))
+        if pos != -1 and pos < next_chapter_pos:
+            # 检查是否是下一个章节标题
+            next_text = template_content[title_pos + len(section_title):pos].strip()
+            if len(next_text) < 50 and not any(c in next_text for c in '。！？'):
+                next_chapter_pos = title_pos + len(section_title) + len(next_text)
+                break
+    
+    # 提取示例内容（取前 500 字符）
+    example_start = title_pos + len(section_title)
+    example_end = min(example_start + 500, next_chapter_pos)
+    example = template_content[example_start:example_end].strip()
+    
+    # 清理示例内容，去掉过多的空白
+    example = ' '.join(example.split())
+    
+    return example if len(example) > 10 else ""
 
 
 def read_docx_text(file_path):
@@ -968,15 +1200,53 @@ def call_qwen_api(prompt, api_key, model='qwen-max'):
 
 
 def generate_content_with_ai(requirement_content, template_content, user_prompt, section_title, api_key, model='qwen-max', progress_callback=None):
-    """使用 AI 生成指定小节的内容"""
+    """使用 AI 生成指定小节的内容（支持章节分类处理）"""
+    
+    # 判断章节类型
+    if is_info_chapter(section_title):
+        # 信息提取类章节：直接从需求文档中提取
+        extracted_info = extract_info_from_requirement(section_title, requirement_content)
+        if extracted_info:
+            return extracted_info
+        # 如果提取失败，降级为 AI 生成
+    
+    # 内容撰写类章节（或信息提取失败）：调用 AI 生成
+    # 从模板中提取参考示例
+    template_example = extract_template_example(section_title, template_content)
+    
+    # 构建精准 Prompt
+    if template_example:
+        prompt = f"""你是一位专业的可行性研究报告撰写专家。请根据以下材料，为"{section_title}"这一小节撰写专业、详细的正文内容。
 
-    prompt = f"""你是一位专业的可行性研究报告撰写专家。请根据以下材料，为"{section_title}"这一小节撰写专业、详细的正文内容。
+【模板中的参考示例】（请参考此格式和风格）
+{template_example}
 
 【需求文档内容】
-{requirement_content[:3000] if requirement_content else '暂无需求文档'}
+{requirement_content[:5000] if requirement_content else '暂无需求文档'}
+
+【用户额外要求】
+{user_prompt if user_prompt else '无特殊要求'}
+
+【重要撰写要求】
+1. 内容要专业、严谨，符合可行性研究报告的规范
+2. 结合需求文档中的具体信息，不要泛泛而谈
+3. 数据要合理，逻辑要清晰
+4. 使用正式的公文语言
+5. 参考模板示例的格式和风格，不要发挥
+6. 不要包含 Markdown 格式（如 #、** 等），使用纯文本
+7. 【重要】不要输出任何标题，只输出正文内容！标题已经由系统自动生成
+8. 【重要】不要以"{section_title}"或类似标题开头，直接开始正文内容
+
+请为"{section_title}"这一小节撰写正文内容（只输出正文，不要输出标题）："""
+    else:
+        # 没有模板示例时的降级 Prompt
+        prompt = f"""你是一位专业的可行性研究报告撰写专家。请根据以下材料，为"{section_title}"这一小节撰写专业、详细的正文内容。
+
+【需求文档内容】
+{requirement_content[:5000] if requirement_content else '暂无需求文档'}
 
 【模板格式参考】
-{template_content[:2000] if template_content else '暂无模板'}
+{template_content[:3000] if template_content else '暂无模板'}
 
 【用户额外要求】
 {user_prompt if user_prompt else '无特殊要求'}
@@ -1507,7 +1777,7 @@ def process_document_async(task_id, template_type, requirement_content, template
         task_manager.update_task_progress(task_id, progress=15,
             status=TaskStatus.CREATING_DOC.value, message='目录完成，准备生成正文')
         
-        # 逐章生成
+        # 逐章生��
         for idx, (chapter_title, sections) in enumerate(template_config['chapters']):
             # 检查任务是否被取消
             task_info = task_manager.get_task_status(task_id)
@@ -1587,6 +1857,162 @@ def task_center():
     """文件生成管理中心"""
     return render_template('task_center.html')
 
+
+# ==================== 代码生成接口（A 方案） ====================
+
+@app.route('/api/generate_code', methods=['POST'])
+def generate_code():
+    """
+    根据目录结构和需求文档生成完整的 Python 代码
+    """
+    try:
+        # 获取参数
+        template_type = request.form.get('template_type', 'future_community')
+        
+        # 读取需求文档
+        requirement_file = request.files.get('requirement_file')
+        requirement_content = ''
+        
+        if requirement_file and allowed_file(requirement_file.filename):
+            filename = secure_filename(requirement_file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], f'{uuid.uuid4()}_{filename}')
+            requirement_file.save(filepath)
+            
+            if filename.endswith('.docx'):
+                requirement_content = read_docx_text(filepath)
+            elif filename.endswith('.txt'):
+                requirement_content = read_txt_text(filepath)
+            
+            # 同时保存为 requirement.txt 方便后续使用
+            req_path = os.path.join(app.config['UPLOAD_FOLDER'], 'requirement.txt')
+            with open(req_path, 'w', encoding='utf-8') as f:
+                f.write(requirement_content)
+        
+        # 加载目录配置
+        chapters_path = os.path.join(app.config['UPLOAD_FOLDER'], 'chapter_config.json')
+        if not os.path.exists(chapters_path):
+            return jsonify({
+                'success': False,
+                'message': '请先扫描模板并保存目录结构'
+            }), 400
+        
+        with open(chapters_path, 'r', encoding='utf-8') as f:
+            chapters = json.load(f)
+        
+        # 加载样式配置
+        styles = load_style_config()
+        
+        # 生成代码
+        from generators import generate_word_code
+        python_code = generate_word_code(chapters, styles, requirement_content, template_type)
+        
+        # 保存生成的代码
+        code_filename = f'generated_{datetime.now().strftime("%Y%m%d_%H%M%S")}.py'
+        code_path = os.path.join(app.config['UPLOAD_FOLDER'], code_filename)
+        with open(code_path, 'w', encoding='utf-8') as f:
+            f.write(python_code)
+        
+        return jsonify({
+            'success': True,
+            'message': '代码生成成功',
+            'code_filename': code_filename,
+            'code_preview': python_code[:2000]  # 返回前 2000 字符预览
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'message': f'生成失败：{str(e)}',
+            'detail': traceback.format_exc()
+        }), 500
+
+
+@app.route('/api/execute_code', methods=['POST'])
+def execute_code():
+    """
+    执行生成的 Python 代码，生成 Word 文档
+    """
+    try:
+        data = request.get_json()
+        code_filename = data.get('code_filename', '')
+        
+        if not code_filename:
+            return jsonify({
+                'success': False,
+                'message': '请指定要执行的代码文件'
+            }), 400
+        
+        code_path = os.path.join(app.config['UPLOAD_FOLDER'], code_filename)
+        if not os.path.exists(code_path):
+            return jsonify({
+                'success': False,
+                'message': '代码文件不存在'
+            }), 404
+        
+        # 读取代码
+        with open(code_path, 'r', encoding='utf-8') as f:
+            python_code = f.read()
+        
+        # 创建临时目录执行代码
+        import tempfile
+        import subprocess
+        
+        # 在执行时重定向日志
+        temp_dir = tempfile.mkdtemp()
+        temp_script = os.path.join(temp_dir, 'run.py')
+        
+        # 修改代码，添加输出路径
+        output_path = os.path.join(app.config['OUTPUT_FOLDER'], f'generated_{datetime.now().strftime("%Y%m%d_%H%M%S")}.docx')
+        
+        # 执行代码
+        exec_globals = {
+            '__name__': '__main__',
+            '__file__': code_path
+        }
+
+        # 为了安全，使用受限的执行环境
+        # 这里直接执行生成的代码
+        exec(compile(python_code, code_path, 'exec'), exec_globals)
+        
+        # 查找生成的文件
+        output_files = [f for f in os.listdir('.') if f.endswith('.docx') and f.startswith('generated_')]
+        output_files.sort(reverse=True)
+        
+        if output_files:
+            output_file = output_files[0]
+            return jsonify({
+                'success': True,
+                'message': '文档生成成功',
+                'output_file': output_file,
+                'download_url': f'/api/download/{output_file}'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '未找到生成的文件'
+            }), 500
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'message': f'执行失败：{str(e)}',
+            'detail': traceback.format_exc()
+        }), 500
+
+
+@app.route('/api/download/<filename>', methods=['GET'])
+def download_file(filename):
+    """下载生成的文件"""
+    from flask import send_file
+    filepath = os.path.join(app.config['OUTPUT_FOLDER'], filename)
+    if os.path.exists(filepath):
+        return send_file(filepath, as_attachment=True)
+    return jsonify({'success': False, 'message': '文件不存在'}), 404
+
+
+# ==================== 原有接口 ====================
 
 @app.route('/api/generate', methods=['POST'])
 def generate():
