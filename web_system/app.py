@@ -469,6 +469,9 @@ def scan_template_styles(file_path):
             '依据', '职能', '职责', '差距', '问题', '趋势', '评估'
         ]
         
+        # 获取文档的编号定义
+        numbering = doc.part.numbering_definitions
+        
         for para in doc.paragraphs:
             text = para.text.strip()
             if not text:
@@ -494,10 +497,6 @@ def scan_template_styles(file_path):
             if text.startswith('(') or text.startswith('（'):
                 continue
             
-            # 跳过以数字 + 顿号开头的文本（如"1、"）
-            if re.match(r'^\d+[,、]', text):
-                continue
-            
             # 跳过包含"详见"的文本（通常是引用）
             if '详见' in text:
                 continue
@@ -506,24 +505,14 @@ def scan_template_styles(file_path):
             if len(text) < 15 and any(kw in text for kw in ['预算', '费用', '表', '清单']):
                 continue
             
-            # 尝试匹配带编号的章节标题（支持多种格式）
-            # 格式 1: 数字编号 1 项目概况 或 1.1 项目名称
-            # 格式 2: 中文编号 第一章 项目概况 或 第一节 项目名称
-            # 格式 3: 中文数字 一、项目概况
+            # 尝试从 XML 结构中获取编号信息
+            num_info = get_paragraph_numbering(para)
             
-            numbered_match = re.match(r'^(\d+(?:\.\d+)*)\s+(.+)$', text)
-            chinese_chapter_match = re.match(r'^第 ([一二三四五六七八九十\d]+) 章\s+(.+)$', text)
-            chinese_section_match = re.match(r'^第 ([一二三四五六七八九十\d]+) 节\s+(.+)$', text)
-            chinese_num_match = re.match(r'^([一二三四五六七八九十]+)[、.]\s*(.+)$', text)
-            
-            if numbered_match:
-                number = numbered_match.group(1)
-                title = numbered_match.group(2)
-                level = number.count('.') + 1
-                
-                # 排除类似"1、"这样的列表项
-                if title.startswith('、') or title.startswith('，') or title.startswith(';'):
-                    continue
+            if num_info:
+                # 有编号的章节
+                number = num_info['number']
+                level = num_info['level']
+                title = text
                 
                 # 排除过长的文本
                 if len(title) > 80:
@@ -543,59 +532,11 @@ def scan_template_styles(file_path):
                     'children': []
                 }
                 
-                add_to_parent(chapters, chapter_node, number)
-            
-            elif chinese_chapter_match:
-                # 中文章节编号：第一章 项目概况
-                chapter_num = chinese_chapter_match.group(1)
-                title = chinese_chapter_match.group(2)
-                
-                style_info = extract_paragraph_style(para)
-                
-                chapter_node = {
-                    'number': f'第{chapter_num}章',
-                    'title': title,
-                    'level': 1,
-                    'style': style_info,
-                    'children': []
-                }
-                
-                chapters.append(chapter_node)
-            
-            elif chinese_section_match:
-                # 中文节编号：第一节 项目名称
-                section_num = chinese_section_match.group(1)
-                title = chinese_section_match.group(2)
-                
-                style_info = extract_paragraph_style(para)
-                
-                chapter_node = {
-                    'number': f'第{section_num}节',
-                    'title': title,
-                    'level': 2,
-                    'style': style_info,
-                    'children': []
-                }
-                
-                if chapters:
-                    chapters[-1]['children'].append(chapter_node)
-            
-            elif chinese_num_match:
-                # 中文数字编号：一、项目概况
-                num = chinese_num_match.group(1)
-                title = chinese_num_match.group(2)
-                
-                style_info = extract_paragraph_style(para)
-                
-                chapter_node = {
-                    'number': f'{num}、',
-                    'title': title,
-                    'level': 1,
-                    'style': style_info,
-                    'children': []
-                }
-                
-                chapters.append(chapter_node)
+                if level == 1:
+                    chapters.append(chapter_node)
+                else:
+                    # 添加到最近的父节点
+                    add_to_parent_by_level(chapters, chapter_node, level)
             
             else:
                 # 尝试匹配没有编号的章节标题
@@ -645,6 +586,92 @@ def scan_template_styles(file_path):
             'message': f'扫描失败：{str(e)}',
             'detail': traceback.format_exc()
         }
+
+
+def get_paragraph_numbering(para):
+    """从段落的 XML 结构中获取编号信息（支持 WPS 多级编号）"""
+    try:
+        # 获取段落的 XML 元素
+        p_element = para._element
+        
+        # 查找编号属性（w:numPr）
+        numPr = p_element.find('.//w:numPr', namespaces={'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'})
+        
+        if numPr is None:
+            return None
+        
+        # 获取编号级别（w:ilvl）
+        ilvl = numPr.find('w:ilvl', namespaces={'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'})
+        if ilvl is None:
+            return None
+        
+        level = int(ilvl.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val')) + 1
+        
+        # 获取编号 ID（w:numId）
+        numId = numPr.find('w:numId', namespaces={'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'})
+        if numId is None:
+            return None
+        
+        num_id = int(numId.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val'))
+        
+        # 获取编号文本（从段落样式或编号定义中）
+        # 尝试从段落文本开头提取编号
+        text = para.text.strip()
+        
+        # 匹配常见编号格式
+        import re
+        
+        # 格式 1: 第一章 项目概况
+        match = re.match(r'^第 ([一二三四五六七八九十\d]+) 章\s*(.+)$', text)
+        if match:
+            return {'number': f'第{match.group(1)}章', 'level': 1}
+        
+        # 格式 2: 第一节 项目名称
+        match = re.match(r'^第 ([一二三四五六七八九十\d]+) 节\s*(.+)$', text)
+        if match:
+            return {'number': f'第{match.group(1)}节', 'level': 2}
+        
+        # 格式 3: 一、项目概况
+        match = re.match(r'^([一二三四五六七八九十]+)[、.]\s*(.+)$', text)
+        if match:
+            return {'number': f'{match.group(1)}、', 'level': 1}
+        
+        # 格式 4: 1 项目概况 或 1.1 项目名称
+        match = re.match(r'^(\d+(?:\.\d+)*)\s+(.+)$', text)
+        if match:
+            num = match.group(1)
+            return {'number': num, 'level': len(num.split('.'))}
+        
+        # 如果无法从文本提取，返回编号级别
+        return {'number': str(level), 'level': level}
+        
+    except Exception as e:
+        return None
+
+
+def add_to_parent_by_level(chapters, node, level):
+    """将节点添加到合适的父节点下（按层级）"""
+    if not chapters:
+        chapters.append(node)
+        return
+    
+    # 从后往前查找最近的层级为 level-1 的节点
+    def find_parent(nodes, target_level):
+        for n in reversed(nodes):
+            if n.get('level', 1) == target_level:
+                return n
+            if n.get('children'):
+                result = find_parent(n['children'], target_level)
+                if result:
+                    return result
+        return None
+    
+    parent = find_parent(chapters, level - 1)
+    if parent:
+        parent['children'].append(node)
+    else:
+        # 没有找到父节点，添加到最后一个一级章节
+        chapters[-1]['children'].append(node)
 
 
 def add_to_parent(chapters, node, number):
