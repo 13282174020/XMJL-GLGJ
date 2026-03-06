@@ -472,7 +472,7 @@
             </h1>
             <div class="header-actions">
                 <a href="/task-center" style="color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 6px; font-size: 13px;">📊 任务管理中心</a>
-                <button onclick="showStylesModal()">🎨 样式配置</button>
+                <button onclick="showConfigModal()">📑 目录与样式</button>
                 <button onclick="showHelpModal()">❓ 帮助</button>
                 <button onclick="showTemplatesModal()">📋 模板选择</button>
             </div>
@@ -865,18 +865,293 @@
             }
         });
 
-        // ========== 样式配置功能 ==========
+        // ========== 目录与样式配置功能 ==========
         
-        // 显示样式配置弹窗
-        function showStylesModal() {
-            loadStylesAndShowModal();
+        let currentChapters = [];  // 当前扫描/编辑的章节目录
+        
+        // 显示配置弹窗（目录 + 样式）
+        function showConfigModal() {
+            document.getElementById('configModal').classList.add('show');
+            // 默认显示目录标签页
+            switchConfigTab('chapters');
+            // 加载章节目录
+            loadChapters();
         }
 
-        function closeStylesModal() {
-            document.getElementById('stylesModal').classList.remove('show');
+        function closeConfigModal() {
+            document.getElementById('configModal').classList.remove('show');
         }
+        
+        // 切换标签页
+        function switchConfigTab(tab) {
+            document.querySelectorAll('.config-tab-content').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.config-tab-btn').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById('chapters-tab').style.display = 'block';
+            document.getElementById('styles-tab').style.display = 'none';
+            
+            if (tab === 'chapters') {
+                document.querySelector('[data-tab="chapters"]').classList.add('active');
+            } else {
+                document.querySelector('[data-tab="styles"]').classList.add('active');
+                document.getElementById('chapters-tab').style.display = 'none';
+                document.getElementById('styles-tab').style.display = 'block';
+            }
+        }
+        
+        // 加载章节目录
+        async function loadChapters() {
+            try {
+                const response = await fetch('/api/chapters/load');
+                const data = await response.json();
+                
+                if (data.success && data.chapters && data.chapters.length > 0) {
+                    currentChapters = data.chapters;
+                    renderChapterTree(currentChapters);
+                } else {
+                    currentChapters = [];
+                    document.getElementById('chapterTreeContainer').innerHTML = '<p style="color:#999;text-align:center;padding:40px;">暂无章节目录，请先上传模板文件后点击「扫描模板」</p>';
+                }
+            } catch (error) {
+                alert('加载章节目录失败：' + error.message);
+            }
+        }
+        
+        // 渲染目录树
+        function renderChapterTree(chapters, level = 0, parentElement = null) {
+            const container = parentElement || document.getElementById('chapterTreeContainer');
+            if (!parentElement) {
+                container.innerHTML = '';
+            }
+            
+            if (!chapters || chapters.length === 0) {
+                if (!parentElement) {
+                    container.innerHTML = '<p style="color:#999;text-align:center;padding:40px;">暂无章节</p>';
+                }
+                return;
+            }
+            
+            const ul = document.createElement('ul');
+            ul.className = 'chapter-tree';
+            if (level > 0) ul.style.marginLeft = '20px';
+            
+            chapters.forEach((chapter, index) => {
+                const li = document.createElement('li');
+                li.className = 'chapter-item';
+                li.dataset.level = level;
+                li.dataset.index = index;
+                
+                const itemContent = document.createElement('div');
+                itemContent.className = 'chapter-item-content';
+                itemContent.style.paddingLeft = (level * 20) + 'px';
+                
+                // 展开/收起按钮
+                const toggleBtn = document.createElement('span');
+                toggleBtn.className = 'chapter-toggle';
+                toggleBtn.textContent = chapter.children && chapter.children.length > 0 ? '▼' : '▶';
+                toggleBtn.style.cursor = 'pointer';
+                toggleBtn.style.width = '16px';
+                toggleBtn.style.display = 'inline-block';
+                toggleBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    const childUl = li.querySelector('ul');
+                    if (childUl) {
+                        childUl.style.display = childUl.style.display === 'none' ? 'block' : 'none';
+                        toggleBtn.textContent = childUl.style.display === 'none' ? '▶' : '▼';
+                    }
+                };
+                
+                // 章节编号和标题
+                const titleSpan = document.createElement('span');
+                titleSpan.className = 'chapter-title';
+                titleSpan.textContent = `${chapter.number} ${chapter.title}`;
+                titleSpan.style.marginLeft = '5px';
+                titleSpan.style.cursor = 'pointer';
+                
+                // 编辑按钮
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-sm btn-edit';
+                editBtn.textContent = '编辑';
+                editBtn.style.marginLeft = '10px';
+                editBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    editChapter(chapter, index, level);
+                };
+                
+                // 删除按钮
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-sm btn-delete';
+                deleteBtn.textContent = '删除';
+                deleteBtn.style.marginLeft = '5px';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteChapter(index, level);
+                };
+                
+                // 添加子节点按钮
+                const addChildBtn = document.createElement('button');
+                addChildBtn.className = 'btn-sm btn-add';
+                addChildBtn.textContent = '+ 子项';
+                addChildBtn.style.marginLeft = '5px';
+                addChildBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    addChildChapter(chapter, index, level);
+                };
+                
+                itemContent.appendChild(toggleBtn);
+                itemContent.appendChild(titleSpan);
+                itemContent.appendChild(editBtn);
+                itemContent.appendChild(deleteBtn);
+                itemContent.appendChild(addChildBtn);
+                
+                li.appendChild(itemContent);
+                
+                // 递归渲染子节点
+                if (chapter.children && chapter.children.length > 0) {
+                    const childContainer = document.createElement('div');
+                    childContainer.style.display = 'block';
+                    li.appendChild(childContainer);
+                    renderChapterTree(chapter.children, level + 1, childContainer);
+                }
+                
+                ul.appendChild(li);
+            });
+            
+            if (!parentElement) {
+                container.appendChild(ul);
+            }
+        }
+        
+        // 编辑章节
+        function editChapter(chapter, index, level) {
+            const newNumber = prompt('章节编号:', chapter.number);
+            if (newNumber === null) return;
+            if (!newNumber.trim()) {
+                alert('章节编号不能为空');
+                return;
+            }
+            
+            const newTitle = prompt('章节标题:', chapter.title);
+            if (newTitle === null) return;
+            if (!newTitle.trim()) {
+                alert('章节标题不能为空');
+                return;
+            }
+            
+            chapter.number = newNumber.trim();
+            chapter.title = newTitle.trim();
+            chapter.level = level + 1;
+            
+            saveChaptersAndRefresh();
+        }
+        
+        // 删除章节
+        function deleteChapter(index, level) {
+            if (!confirm('确定要删除这个章节及其所有子章节吗？')) return;
+            
+            if (level === 0) {
+                currentChapters.splice(index, 1);
+            } else {
+                // 需要找到父节点
+                // 简化处理：重新扫描后删除
+                alert('当前仅支持删除一级章节，子章节请在扫描后重新上传模板修改');
+                return;
+            }
+            
+            saveChaptersAndRefresh();
+        }
+        
+        // 添加子章节
+        function addChildChapter(parentChapter, index, level) {
+            const newNumber = prompt('子章节编号 (例如 ' + parentChapter.number + '.1):', parentChapter.number + '.1');
+            if (newNumber === null) return;
+            if (!newNumber.trim()) {
+                alert('章节编号不能为空');
+                return;
+            }
+            
+            const newTitle = prompt('子章节标题:', '新章节');
+            if (newTitle === null) return;
+            if (!newTitle.trim()) {
+                alert('章节标题不能为空');
+                return;
+            }
+            
+            const newChapter = {
+                number: newNumber.trim(),
+                title: newTitle.trim(),
+                level: level + 2,
+                children: []
+            };
+            
+            if (!parentChapter.children) {
+                parentChapter.children = [];
+            }
+            parentChapter.children.push(newChapter);
+            
+            saveChaptersAndRefresh();
+        }
+        
+        // 保存章节目录并刷新
+        async function saveChaptersAndRefresh() {
+            try {
+                const response = await fetch('/api/chapters/save', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({chapters: currentChapters})
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    renderChapterTree(currentChapters);
+                } else {
+                    alert('保存失败：' + data.message);
+                }
+            } catch (error) {
+                alert('保存失败：' + error.message);
+            }
+        }
+        
+        // 扫描模板
+        async function scanTemplateForChapters() {
+            const templateFile = document.getElementById('templateFile').files[0];
+            if (!templateFile) {
+                alert('请先上传模板文件');
+                return;
+            }
 
-        // 加载样式配置并显示弹窗
+            const formData = new FormData();
+            formData.append('template', templateFile);
+            
+            // 显示加载状态
+            const scanBtn = event.target;
+            const originalText = scanBtn.textContent;
+            scanBtn.disabled = true;
+            scanBtn.textContent = '扫描中...';
+
+            try {
+                const response = await fetch('/api/template/scan', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    currentChapters = data.chapters;
+                    renderChapterTree(currentChapters);
+                    alert('模板扫描成功！共扫描到 ' + data.total_nodes + ' 个章节节点。\\n\\n请在下方目录树中检查，如有缺失可手动添加。');
+                } else {
+                    alert('扫描失败：' + data.message);
+                }
+            } catch (error) {
+                alert('扫描失败：' + error.message);
+            } finally {
+                scanBtn.disabled = false;
+                scanBtn.textContent = originalText;
+            }
+        }
+        
+        // 加载样式配置
         async function loadStylesAndShowModal() {
             try {
                 const response = await fetch('/api/styles/load');
@@ -909,8 +1184,6 @@
                     document.getElementById('normal_spacing').value = styles.normal?.line_spacing || 1.5;
                     document.getElementById('normal_indent').value = styles.normal?.first_line_indent || 0.74;
                 }
-                
-                document.getElementById('stylesModal').classList.add('show');
             } catch (error) {
                 alert('加载样式配置失败：' + error.message);
             }
@@ -955,7 +1228,6 @@
                 const data = await response.json();
                 if (data.success) {
                     alert('样式配置已保存！下次生成文档时将使用新配置。');
-                    closeStylesModal();
                 } else {
                     alert('保存失败：' + data.message);
                 }
@@ -963,224 +1235,349 @@
                 alert('保存失败：' + error.message);
             }
         }
-
-        // 扫描上传的模板文件提取样式
-        async function scanTemplateStyles() {
-            const templateFile = document.getElementById('templateFile').files[0];
-            if (!templateFile) {
-                alert('请先上传模板文件');
+        
+        // 保存全部配置（目录 + 样式）
+        async function saveAllConfig() {
+            // 先保存目录
+            try {
+                await fetch('/api/chapters/save', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({chapters: currentChapters})
+                });
+            } catch (error) {
+                alert('目录保存失败：' + error.message);
                 return;
             }
-
-            const formData = new FormData();
-            formData.append('template', templateFile);
-
+            
+            // 再保存样式
             try {
-                const response = await fetch('/api/template/scan', {
+                const styles = {
+                    heading1: {
+                        font_name: document.getElementById('h1_font').value,
+                        font_size: parseFloat(document.getElementById('h1_size').value),
+                        bold: document.getElementById('h1_bold').checked,
+                        alignment: document.getElementById('h1_align').value
+                    },
+                    heading2: {
+                        font_name: document.getElementById('h2_font').value,
+                        font_size: parseFloat(document.getElementById('h2_size').value),
+                        bold: document.getElementById('h2_bold').checked,
+                        alignment: document.getElementById('h2_align').value
+                    },
+                    heading3: {
+                        font_name: document.getElementById('h3_font').value,
+                        font_size: parseFloat(document.getElementById('h3_size').value),
+                        bold: document.getElementById('h3_bold').checked,
+                        alignment: document.getElementById('h3_align').value
+                    },
+                    normal: {
+                        font_name: document.getElementById('normal_font').value,
+                        font_size: parseFloat(document.getElementById('normal_size').value),
+                        line_spacing: parseFloat(document.getElementById('normal_spacing').value),
+                        first_line_indent: parseFloat(document.getElementById('normal_indent').value)
+                    }
+                };
+                
+                await fetch('/api/styles/save', {
                     method: 'POST',
-                    body: formData
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({styles: styles})
                 });
-
-                const data = await response.json();
-                if (data.success) {
-                    alert('模板扫描成功！共扫描到 ' + data.chapters.length + ' 个章节。\\n\\n注意：模板样式提取功能正在开发中，当前使用默认样式配置。');
-                    // TODO: 根据扫描结果自动填充样式配置
-                } else {
-                    alert('扫描失败：' + data.message);
-                }
+                
+                alert('配置已全部保存！下次生成文档时将使用新的目录和样式配置。');
+                closeConfigModal();
             } catch (error) {
-                alert('扫描失败：' + error.message);
+                alert('样式保存失败：' + error.message);
             }
         }
     </script>
 
-    <!-- 样式配置弹窗 -->
-    <div class="modal" id="stylesModal">
-        <div class="modal-content" style="max-width: 700px;">
+    <!-- 目录与样式配置弹窗 -->
+    <div class="modal" id="configModal">
+        <div class="modal-content" style="max-width: 900px; max-height: 90vh;">
             <div class="modal-header">
-                <h3>🎨 文档样式配置</h3>
-                <button class="modal-close" onclick="closeStylesModal()">&times;</button>
+                <h3>📑 目录与样式配置</h3>
+                <button class="modal-close" onclick="closeConfigModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="tips" style="margin-bottom: 15px;">
-                    <h4 style="margin-bottom: 8px;">💡 使用说明</h4>
-                    <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #666;">
-                        <li>上传模板文件后，可点击「扫描模板」自动提取样式（开发中）</li>
-                        <li>也可手动配置各级标题和正文的字体、字号、对齐方式等</li>
-                        <li>配置保存后，下次生成文档时将使用新配置</li>
-                    </ul>
+                <!-- 标签页切换 -->
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
+                    <button class="btn config-tab-btn active" data-tab="chapters" onclick="switchConfigTab('chapters')" 
+                        style="background: #667eea; color: white; padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer;">
+                        📋 章节目录
+                    </button>
+                    <button class="btn config-tab-btn" data-tab="styles" onclick="switchConfigTab('styles')"
+                        style="background: #f0f0f0; color: #666; padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer;">
+                        🎨 样式配置
+                    </button>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                    <div>
-                        <h4 style="margin-bottom: 10px; color: #1e3c72;">📑 一级标题（章标题）</h4>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                            <div>
-                                <label style="font-size: 12px;">字体</label>
-                                <select id="h1_font" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <option>黑体</option>
-                                    <option>楷体</option>
-                                    <option>仿宋</option>
-                                    <option>宋体</option>
-                                    <option>微软雅黑</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="font-size: 12px;">字号</label>
-                                <select id="h1_size" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <option value="12">12 磅</option>
-                                    <option value="14">14 磅</option>
-                                    <option value="16">16 磅</option>
-                                    <option value="18">18 磅</option>
-                                    <option value="22" selected>22 磅</option>
-                                    <option value="26">26 磅</option>
-                                    <option value="36">36 磅</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="font-size: 12px;">对齐</label>
-                                <select id="h1_align" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <option value="center">居中</option>
-                                    <option value="left">左对齐</option>
-                                    <option value="right">右对齐</option>
-                                </select>
-                            </div>
-                            <div style="display: flex; align-items: center; padding-top: 20px;">
-                                <label style="font-size: 12px;">
-                                    <input type="checkbox" id="h1_bold" checked> 加粗
-                                </label>
-                            </div>
-                        </div>
+                <!-- 章节目录标签页 -->
+                <div id="chapters-tab" class="config-tab-content">
+                    <div class="tips" style="margin-bottom: 15px;">
+                        <h4 style="margin-bottom: 8px;">💡 使用说明</h4>
+                        <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #666;">
+                            <li>先在主页面上传 Word 模板文件，然后点击「扫描模板」自动提取目录结构</li>
+                            <li>支持无限层级目录（1 → 1.1 → 1.1.1 → 1.1.1.1 ...）</li>
+                            <li>可点击「编辑」修改章节编号和标题，点击「+ 子项」添加下级章节</li>
+                            <li>扫描和编辑后的目录会保存，下次生成 Word 时将按此目录结构生成</li>
+                        </ul>
                     </div>
 
-                    <div>
-                        <h4 style="margin-bottom: 10px; color: #1e3c72;">📑 二级标题（节标题）</h4>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                            <div>
-                                <label style="font-size: 12px;">字体</label>
-                                <select id="h2_font" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <option>黑体</option>
-                                    <option value="楷体" selected>楷体</option>
-                                    <option>仿宋</option>
-                                    <option>宋体</option>
-                                    <option>微软雅黑</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="font-size: 12px;">字号</label>
-                                <select id="h2_size" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <option value="12">12 磅</option>
-                                    <option value="14">14 磅</option>
-                                    <option value="16" selected>16 磅</option>
-                                    <option value="18">18 磅</option>
-                                    <option value="22">22 磅</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="font-size: 12px;">对齐</label>
-                                <select id="h2_align" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <option value="center">居中</option>
-                                    <option value="left" selected>左对齐</option>
-                                    <option value="right">右对齐</option>
-                                </select>
-                            </div>
-                            <div style="display: flex; align-items: center; padding-top: 20px;">
-                                <label style="font-size: 12px;">
-                                    <input type="checkbox" id="h2_bold" checked> 加粗
-                                </label>
-                            </div>
-                        </div>
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <button type="button" class="btn btn-primary" onclick="scanTemplateForChapters()">📷 扫描模板</button>
+                        <button type="button" class="btn btn-secondary" onclick="loadChapters()">🔄 重新加载</button>
                     </div>
 
-                    <div>
-                        <h4 style="margin-bottom: 10px; color: #1e3c72;">📑 三级标题（小节标题）</h4>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                            <div>
-                                <label style="font-size: 12px;">字体</label>
-                                <select id="h3_font" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <option>黑体</option>
-                                    <option value="楷体" selected>楷体</option>
-                                    <option>仿宋</option>
-                                    <option>宋体</option>
-                                    <option>微软雅黑</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="font-size: 12px;">字号</label>
-                                <select id="h3_size" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <option value="10">10 磅</option>
-                                    <option value="12">12 磅</option>
-                                    <option value="14" selected>14 磅</option>
-                                    <option value="16">16 磅</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="font-size: 12px;">对齐</label>
-                                <select id="h3_align" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <option value="center">居中</option>
-                                    <option value="left" selected>左对齐</option>
-                                    <option value="right">右对齐</option>
-                                </select>
-                            </div>
-                            <div style="display: flex; align-items: center; padding-top: 20px;">
-                                <label style="font-size: 12px;">
-                                    <input type="checkbox" id="h3_bold" checked> 加粗
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div>
-                        <h4 style="margin-bottom: 10px; color: #1e3c72;">📝 正文样式</h4>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                            <div>
-                                <label style="font-size: 12px;">字体</label>
-                                <select id="normal_font" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <option>黑体</option>
-                                    <option>楷体</option>
-                                    <option value="仿宋" selected>仿宋</option>
-                                    <option>宋体</option>
-                                    <option>微软雅黑</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="font-size: 12px;">字号</label>
-                                <select id="normal_size" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <option value="9">9 磅</option>
-                                    <option value="10">10 磅</option>
-                                    <option value="10.5" selected>10.5 磅</option>
-                                    <option value="11">11 磅</option>
-                                    <option value="12">12 磅</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="font-size: 12px;">行距</label>
-                                <select id="normal_spacing" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <option value="1">1 倍</option>
-                                    <option value="1.25">1.25 倍</option>
-                                    <option value="1.5" selected>1.5 倍</option>
-                                    <option value="2">2 倍</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label style="font-size: 12px;">首行缩进</label>
-                                <select id="normal_indent" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
-                                    <option value="0">无缩进</option>
-                                    <option value="0.74" selected>2 字符</option>
-                                    <option value="1">1 厘米</option>
-                                </select>
-                            </div>
-                        </div>
+                    <!-- 目录树容器 -->
+                    <div id="chapterTreeContainer" style="border: 1px solid #eee; border-radius: 8px; padding: 15px; max-height: 400px; overflow-y: auto;">
+                        <p style="color:#999;text-align:center;padding:40px;">暂无章节目录，请先上传模板文件后点击「扫描模板」</p>
                     </div>
                 </div>
 
+                <!-- 样式配置标签页 -->
+                <div id="styles-tab" class="config-tab-content" style="display: none;">
+                    <div class="tips" style="margin-bottom: 15px;">
+                        <h4 style="margin-bottom: 8px;">💡 使用说明</h4>
+                        <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #666;">
+                            <li>配置各级标题和正文的字体、字号、对齐方式等样式</li>
+                            <li>配置保存后，下次生成文档时将使用新配置</li>
+                        </ul>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div>
+                            <h4 style="margin-bottom: 10px; color: #1e3c72;">📑 一级标题（章标题）</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div>
+                                    <label style="font-size: 12px;">字体</label>
+                                    <select id="h1_font" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option>黑体</option>
+                                        <option>楷体</option>
+                                        <option>仿宋</option>
+                                        <option>宋体</option>
+                                        <option>微软雅黑</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px;">字号</label>
+                                    <select id="h1_size" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option value="12">12 磅</option>
+                                        <option value="14">14 磅</option>
+                                        <option value="16">16 磅</option>
+                                        <option value="18">18 磅</option>
+                                        <option value="22" selected>22 磅</option>
+                                        <option value="26">26 磅</option>
+                                        <option value="36">36 磅</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px;">对齐</label>
+                                    <select id="h1_align" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option value="center">居中</option>
+                                        <option value="left">左对齐</option>
+                                        <option value="right">右对齐</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; align-items: center; padding-top: 20px;">
+                                    <label style="font-size: 12px;">
+                                        <input type="checkbox" id="h1_bold" checked> 加粗
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 style="margin-bottom: 10px; color: #1e3c72;">📑 二级标题（节标题）</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div>
+                                    <label style="font-size: 12px;">字体</label>
+                                    <select id="h2_font" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option>黑体</option>
+                                        <option value="楷体" selected>楷体</option>
+                                        <option>仿宋</option>
+                                        <option>宋体</option>
+                                        <option>微软雅黑</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px;">字号</label>
+                                    <select id="h2_size" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option value="12">12 磅</option>
+                                        <option value="14">14 磅</option>
+                                        <option value="16" selected>16 磅</option>
+                                        <option value="18">18 磅</option>
+                                        <option value="22">22 磅</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px;">对齐</label>
+                                    <select id="h2_align" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option value="center">居中</option>
+                                        <option value="left" selected>左对齐</option>
+                                        <option value="right">右对齐</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; align-items: center; padding-top: 20px;">
+                                    <label style="font-size: 12px;">
+                                        <input type="checkbox" id="h2_bold" checked> 加粗
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 style="margin-bottom: 10px; color: #1e3c72;">📑 三级标题（小节标题）</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div>
+                                    <label style="font-size: 12px;">字体</label>
+                                    <select id="h3_font" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option>黑体</option>
+                                        <option value="楷体" selected>楷体</option>
+                                        <option>仿宋</option>
+                                        <option>宋体</option>
+                                        <option>微软雅黑</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px;">字号</label>
+                                    <select id="h3_size" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option value="10">10 磅</option>
+                                        <option value="12">12 磅</option>
+                                        <option value="14" selected>14 磅</option>
+                                        <option value="16">16 磅</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px;">对齐</label>
+                                    <select id="h3_align" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option value="center">居中</option>
+                                        <option value="left" selected>左对齐</option>
+                                        <option value="right">右对齐</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; align-items: center; padding-top: 20px;">
+                                    <label style="font-size: 12px;">
+                                        <input type="checkbox" id="h3_bold" checked> 加粗
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 style="margin-bottom: 10px; color: #1e3c72;">📝 正文样式</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div>
+                                    <label style="font-size: 12px;">字体</label>
+                                    <select id="normal_font" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option>黑体</option>
+                                        <option>楷体</option>
+                                        <option value="仿宋" selected>仿宋</option>
+                                        <option>宋体</option>
+                                        <option>微软雅黑</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px;">字号</label>
+                                    <select id="normal_size" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option value="9">9 磅</option>
+                                        <option value="10">10 磅</option>
+                                        <option value="10.5" selected>10.5 磅</option>
+                                        <option value="11">11 磅</option>
+                                        <option value="12">12 磅</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px;">行距</label>
+                                    <select id="normal_spacing" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option value="1">1 倍</option>
+                                        <option value="1.25">1.25 倍</option>
+                                        <option value="1.5" selected>1.5 倍</option>
+                                        <option value="2">2 倍</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px;">首行缩进</label>
+                                    <select id="normal_indent" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option value="0">无缩进</option>
+                                        <option value="0.74" selected>2 字符</option>
+                                        <option value="1">1 厘米</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 底部按钮 -->
                 <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
-                    <button type="button" class="btn btn-secondary" onclick="scanTemplateStyles()" title="需要先上传模板文件">📷 扫描模板</button>
-                    <button type="button" class="btn btn-secondary" onclick="closeStylesModal()">取消</button>
-                    <button type="button" class="btn btn-primary" onclick="saveStyles()">💾 保存配置</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeConfigModal()">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveAllConfig()">💾 保存全部配置</button>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- 添加按钮样式 -->
+    <style>
+        .btn-sm {
+            padding: 3px 8px;
+            font-size: 11px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-edit {
+            background: #3498db;
+            color: white;
+        }
+        .btn-edit:hover {
+            background: #2980b9;
+        }
+        .btn-delete {
+            background: #e74c3c;
+            color: white;
+        }
+        .btn-delete:hover {
+            background: #c0392b;
+        }
+        .btn-add {
+            background: #27ae60;
+            color: white;
+        }
+        .btn-add:hover {
+            background: #219a52;
+        }
+        .chapter-tree {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .chapter-item {
+            padding: 5px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .chapter-item-content {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .chapter-item-content:hover {
+            background: #f8f9fa;
+        }
+        .chapter-title {
+            flex: 1;
+            font-size: 14px;
+            color: #333;
+        }
+        .config-tab-btn.active {
+            background: #667eea !important;
+            color: white !important;
+        }
+    </style>
 </body>
 </html>

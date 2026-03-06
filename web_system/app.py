@@ -445,60 +445,94 @@ def read_txt_text(file_path):
 
 
 def scan_template_styles(file_path):
-    """扫描 Word 模板文件，提取章节目录结构和样式信息"""
+    """扫描 Word 模板文件，提取章节目录结构和样式信息（支持无限层级）"""
     try:
         doc = Document(file_path)
         chapters = []
-        current_chapter = None
         
         for para in doc.paragraphs:
             text = para.text.strip()
             if not text:
                 continue
             
-            # 识别章节标题（匹配 1, 1.1, 1.1.1 等格式）
-            chapter_match = re.match(r'^(\d+)\s+(.+)$', text)
-            section_match = re.match(r'^(\d+\.\d+)\s+(.+)$', text)
-            sub_section_match = re.match(r'^(\d+\.\d+\.\d+)\s+(.+)$', text)
+            # 识别章节标题 - 支持无限层级（匹配 1, 1.1, 1.1.1, 1.1.1.1, 1.1.1.1.1 等）
+            # 正则表达式匹配：数字开头，后跟 0 个或多个 .数字 组合
+            chapter_match = re.match(r'^(\d+(?:\.\d+)*)\s+(.+)$', text)
             
             if chapter_match:
-                # 章标题（一级标题）
+                number = chapter_match.group(1)  # 如 "1.2.3"
+                title = chapter_match.group(2)   # 如 "项目名称"
+                level = number.count('.') + 1    # 层级：1=章，2=节，3=小节，以此类推
+                
                 style_info = extract_paragraph_style(para)
-                current_chapter = {
-                    'title': text,
-                    'number': chapter_match.group(1),
-                    'sections': [],
-                    'style': style_info
+                
+                chapter_node = {
+                    'number': number,
+                    'title': title,
+                    'level': level,
+                    'style': style_info,
+                    'children': []  # 子节点列表
                 }
-                chapters.append(current_chapter)
-            elif section_match and current_chapter:
-                # 节标题（二级标题）
-                style_info = extract_paragraph_style(para)
-                current_chapter['sections'].append({
-                    'title': text,
-                    'number': section_match.group(1),
-                    'style': style_info
-                })
-            elif sub_section_match and current_chapter and current_chapter['sections']:
-                # 小节标题（三级标题）
-                style_info = extract_paragraph_style(para)
-                current_chapter['sections'][-1].setdefault('sub_sections', []).append({
-                    'title': text,
-                    'number': sub_section_match.group(1),
-                    'style': style_info
-                })
+                
+                # 将节点添加到正确的父节点下
+                add_to_parent(chapters, chapter_node, number)
         
         return {
             'success': True,
             'chapters': chapters,
-            'message': f'成功扫描 {len(chapters)} 个章节'
+            'message': f'成功扫描 {len(chapters)} 个一级章节',
+            'total_nodes': count_all_nodes(chapters)
         }
     except Exception as e:
+        import traceback
         return {
             'success': False,
             'chapters': [],
-            'message': f'扫描失败：{str(e)}'
+            'message': f'扫描失败：{str(e)}',
+            'detail': traceback.format_exc()
         }
+
+
+def add_to_parent(chapters, node, number):
+    """将节点添加到正确的父节点下（递归查找）"""
+    parts = number.split('.')
+    current_level = len(parts)  # 当前节点的层级
+    
+    if current_level == 1:
+        # 一级章节直接添加到 chapters 列表
+        chapters.append(node)
+    else:
+        # 查找父节点（层级为 current_level - 1 的最后一个节点）
+        parent_parts = parts[:-1]
+        parent_number = '.'.join(parent_parts)
+        
+        # 在 chapters 中递归查找父节点
+        parent = find_node_by_number(chapters, parent_number)
+        if parent:
+            parent['children'].append(node)
+
+
+def find_node_by_number(chapters, number):
+    """递归查找指定编号的节点"""
+    for chapter in chapters:
+        if chapter['number'] == number:
+            return chapter
+        # 在子节点中递归查找
+        if chapter.get('children'):
+            result = find_node_by_number(chapter['children'], number)
+            if result:
+                return result
+    return None
+
+
+def count_all_nodes(chapters):
+    """递归统计所有节点数量"""
+    count = 0
+    for chapter in chapters:
+        count += 1
+        if chapter.get('children'):
+            count += count_all_nodes(chapter['children'])
+    return count
 
 
 def extract_paragraph_style(para):
@@ -926,18 +960,49 @@ def add_normal_paragraph(doc, text, indent=True, styles=None):
 
 
 def generate_word_document(template_type, requirement_content, template_content, user_prompt, api_key, output_path, progress_callback=None, model='qwen-max'):
-    """生成 Word 文档（AI 增强版）"""
-    
+    """生成 Word 文档（AI 增强版）- 使用用户配置的目录结构"""
+
     doc = Document()
+    styles = load_style_config()
+    
     style = doc.styles['Normal']
-    style.font.name = '仿宋'
-    style.font.size = Pt(10.5)
-    style._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+    style.font.name = styles['normal'].get('font_name', '仿宋')
+    style.font.size = Pt(styles['normal'].get('font_size', 10.5))
+    style._element.rPr.rFonts.set(qn('w:eastAsia'), styles['normal'].get('font_name', '仿宋'))
+
+    # 尝试加载用户保存的章节目录
+    chapters_path = os.path.join(app.config['UPLOAD_FOLDER'], 'chapter_config.json')
+    user_chapters = None
+    if os.path.exists(chapters_path):
+        try:
+            with open(chapters_path, 'r', encoding='utf-8') as f:
+                user_chapters = json.load(f)
+        except:
+            user_chapters = None
     
-    # 获取模板配置
-    template_config = TEMPLATE_TYPES.get(template_type, TEMPLATE_TYPES['future_community'])
+    # 如果没有用户目录，使用硬编码的 TEMPLATE_TYPES
+    if not user_chapters:
+        template_config = TEMPLATE_TYPES.get(template_type, TEMPLATE_TYPES['future_community'])
+        # 转换为统一格式
+        user_chapters = []
+        for chapter_title, sections in template_config['chapters']:
+            chapter_node = {
+                'number': chapter_title.split()[0] if ' ' in chapter_title else '1',
+                'title': chapter_title,
+                'level': 1,
+                'children': []
+            }
+            for idx, section in enumerate(sections):
+                section_num = section.split()[0] if ' ' in section else f'{chapter_node["number"]}.{idx+1}'
+                chapter_node['children'].append({
+                    'number': section_num,
+                    'title': section,
+                    'level': 2,
+                    'children': []
+                })
+    
     project_name = "良熟新苑未来社区建设项目" if template_type == 'future_community' else "建设项目"
-    
+
     # ========== 封面 ==========
     title = doc.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -948,20 +1013,20 @@ def generate_word_document(template_type, requirement_content, template_content,
     run.font.size = Pt(36)
     run.font.bold = True
     run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
-    
+
     subtitle = doc.add_paragraph()
     subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
     subtitle.paragraph_format.space_before = Cm(1)
     subtitle.paragraph_format.space_after = Cm(3)
-    run = subtitle.add_run(template_config['name'])
+    run = subtitle.add_run(template_config['name'] if 'template_config' in dir() else '可行性研究报告')
     run.font.name = '黑体'
     run.font.size = Pt(26)
     run.font.bold = True
     run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
-    
+
     for _ in range(5):
         doc.add_paragraph()
-    
+
     builder = doc.add_paragraph()
     builder.alignment = WD_ALIGN_PARAGRAPH.CENTER
     builder.paragraph_format.space_before = Cm(0.5)
@@ -970,7 +1035,7 @@ def generate_word_document(template_type, requirement_content, template_content,
     run.font.name = '楷体'
     run.font.size = Pt(16)
     run._element.rPr.rFonts.set(qn('w:eastAsia'), '楷体')
-    
+
     compiler = doc.add_paragraph()
     compiler.alignment = WD_ALIGN_PARAGRAPH.CENTER
     compiler.paragraph_format.space_before = Cm(0.5)
@@ -979,7 +1044,7 @@ def generate_word_document(template_type, requirement_content, template_content,
     run.font.name = '楷体'
     run.font.size = Pt(16)
     run._element.rPr.rFonts.set(qn('w:eastAsia'), '楷体')
-    
+
     date_para = doc.add_paragraph()
     date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     date_para.paragraph_format.space_before = Cm(0.5)
@@ -988,97 +1053,110 @@ def generate_word_document(template_type, requirement_content, template_content,
     run.font.name = '楷体'
     run.font.size = Pt(16)
     run._element.rPr.rFonts.set(qn('w:eastAsia'), '楷体')
-    
+
     doc.add_page_break()
     if progress_callback:
         progress_callback(5, "封面完成")
-    
+
     # ========== 项目编审人员名单 ==========
-    add_heading(doc, '项目编审人员名单', level=1)
+    add_heading(doc, '项目编审人员名单', level=1, styles=styles)
     doc.add_paragraph()
-    add_normal_paragraph(doc, '项目负责：张建国')
-    add_normal_paragraph(doc, '编制小组：李明、王芳、陈伟、刘洋')
-    add_normal_paragraph(doc, '勘误核稿：赵强')
-    add_normal_paragraph(doc, '项目审定：周建华')
+    add_normal_paragraph(doc, '项目负责：张建国', styles=styles)
+    add_normal_paragraph(doc, '编制小组：李明、王芳、陈伟、刘洋', styles=styles)
+    add_normal_paragraph(doc, '勘误核稿：赵强', styles=styles)
+    add_normal_paragraph(doc, '项目审定：周建华', styles=styles)
     doc.add_page_break()
     if progress_callback:
         progress_callback(10, "编审名单完成")
-    
+
     # ========== 目录 ==========
-    add_heading(doc, '目录', level=1)
+    add_heading(doc, '目录', level=1, styles=styles)
     doc.add_paragraph()
     
-    for chapter_title, sections in template_config['chapters']:
-        para = doc.add_paragraph()
-        para.paragraph_format.left_indent = Cm(0)
-        run = para.add_run(chapter_title)
-        run.font.name = '宋体'
-        run.font.size = Pt(10.5)
-        run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
-        
-        for section in sections:
-            para = doc.add_paragraph()
-            para.paragraph_format.left_indent = Cm(0.74)
-            run = para.add_run(section)
-            run.font.name = '宋体'
-            run.font.size = Pt(10.5)
-            run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+    # 递归渲染目录
+    render_doc_toc(doc, user_chapters, styles)
     
     doc.add_page_break()
     if progress_callback:
         progress_callback(15, "目录完成")
-    
-    # ========== 正文章节（使用 AI 生成） ==========
-    total_chapters = len(template_config['chapters'])
-    
-    for idx, (chapter_title, sections) in enumerate(template_config['chapters']):
+
+    # ========== 正文章节（使用用户配置的目录） ==========
+    total_chapters = len(user_chapters)
+
+    for idx, chapter in enumerate(user_chapters):
         # 添加章节标题
-        add_heading(doc, chapter_title, level=1)
-        
-        # 为每个小节生成内容
-        for section_title in sections:
-            add_heading(doc, section_title, level=2)
-            
-            # 使用 AI 生成内容
-            if api_key:
-                ai_content = generate_content_with_ai(
-                    requirement_content,
-                    template_content,
-                    user_prompt,
-                    section_title,
-                    api_key,
-                    model
-                )
+        add_heading(doc, f"{chapter['number']} {chapter['title']}", level=1, styles=styles)
 
-                # 清理 AI 生成的内容，移除可能的标题行和 Markdown 格式
-                cleaned_paragraphs = clean_ai_content(ai_content, section_title)
-                for para_text in cleaned_paragraphs:
-                    if para_text.strip():
-                        add_normal_paragraph(doc, para_text.strip())
-            else:
-                # 无 API Key 时使用默认内容
-                default_content = f"""{section_title}的具体内容。本项目按照相关规范和要求进行编制，确保符合可行性研究报告的标准。
+        # 递归生成子章节
+        generate_chapter_content(doc, chapter, requirement_content, template_content, 
+                                  user_prompt, api_key, model, styles)
 
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述。包括但不限于项目背景、实施必要性、技术方案、投资估算等方面的内容。
-
-在编制过程中，充分考虑了项目的特点、建设条件、技术要求等因素，确保报告内容的科学性、合理性和可操作性。"""
-                for para_text in default_content.split('\n'):
-                    if para_text.strip():
-                        add_normal_paragraph(doc, para_text.strip())
-        
         doc.add_page_break()
-        
+
         # 进度回调
         progress = 15 + int((idx + 1) / total_chapters * 80)
         if progress_callback:
-            progress_callback(progress, f"正在生成第{idx + 1}章：{chapter_title}")
-    
+            progress_callback(progress, f"正在生成第{idx + 1}章：{chapter['title']}")
+
     # 保存文档
     doc.save(output_path)
     if progress_callback:
         progress_callback(100, "文档保存成功")
 
     return True
+
+
+def render_doc_toc(doc, chapters, styles, level=0):
+    """递归渲染目录"""
+    for chapter in chapters:
+        para = doc.add_paragraph()
+        para.paragraph_format.left_indent = Cm(0.74 * level)
+        run = para.add_run(f"{chapter['number']} {chapter['title']}")
+        run.font.name = '宋体'
+        run.font.size = Pt(10.5)
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+        
+        if chapter.get('children'):
+            render_doc_toc(doc, chapter['children'], styles, level + 1)
+
+
+def generate_chapter_content(doc, chapter_node, requirement_content, template_content, 
+                              user_prompt, api_key, model, styles, depth=0):
+    """递归生成章节内容"""
+    
+    # 生成子章节内容
+    if chapter_node.get('children'):
+        for child in chapter_node['children']:
+            # 添加子章节标题
+            level = min(child.get('level', 2), 4)  # 最多支持 4 级标题
+            add_heading(doc, f"{child['number']} {child['title']}", level=level, styles=styles)
+            
+            # 如果有更深层级的子节点，递归处理
+            if child.get('children'):
+                generate_chapter_content(doc, child, requirement_content, template_content,
+                                          user_prompt, api_key, model, styles, depth + 1)
+            else:
+                # 叶子节点，生成内容
+                if api_key:
+                    ai_content = generate_content_with_ai(
+                        requirement_content,
+                        template_content,
+                        user_prompt,
+                        child['title'],
+                        api_key,
+                        model
+                    )
+                    cleaned_paragraphs = clean_ai_content(ai_content, child['title'])
+                    for para_text in cleaned_paragraphs:
+                        if para_text.strip():
+                            add_normal_paragraph(doc, para_text.strip(), styles=styles)
+                else:
+                    default_content = f"""{child['title']}的具体内容。本项目按照相关规范和要求进行编制，确保符合可行性研究报告的标准。
+
+结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述。"""
+                    for para_text in default_content.split('\n'):
+                        if para_text.strip():
+                            add_normal_paragraph(doc, para_text.strip(), styles=styles)
 
 
 def generate_chapter(doc, chapter_title, sections, requirement_content, template_content,
@@ -1611,7 +1689,8 @@ def scan_template():
                 return jsonify({
                     'success': True,
                     'message': result['message'],
-                    'chapters': result['chapters']
+                    'chapters': result['chapters'],
+                    'total_nodes': result.get('total_nodes', 0)
                 })
             else:
                 return jsonify({
@@ -1629,6 +1708,64 @@ def scan_template():
             'success': False,
             'message': f'扫描失败：{str(e)}',
             'detail': traceback.format_exc()
+        }), 500
+
+
+@app.route('/api/chapters/save', methods=['POST'])
+def save_chapters():
+    """保存用户编辑后的章节目录配置"""
+    try:
+        data = request.json
+        chapters = data.get('chapters', [])
+        
+        if not chapters:
+            return jsonify({
+                'success': False,
+                'message': '章节目录不能为空'
+            }), 400
+        
+        # 将章节目录保存到文件
+        chapters_path = os.path.join(app.config['UPLOAD_FOLDER'], 'chapter_config.json')
+        with open(chapters_path, 'w', encoding='utf-8') as f:
+            json.dump(chapters, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'message': '章节目录配置已保存'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'保存失败：{str(e)}'
+        }), 500
+
+
+@app.route('/api/chapters/load', methods=['GET'])
+def load_chapters():
+    """加载已保存的章节目录配置"""
+    try:
+        chapters_path = os.path.join(app.config['UPLOAD_FOLDER'], 'chapter_config.json')
+        
+        if os.path.exists(chapters_path):
+            with open(chapters_path, 'r', encoding='utf-8') as f:
+                chapters = json.load(f)
+            return jsonify({
+                'success': True,
+                'chapters': chapters,
+                'message': '已加载保存的章节目录配置'
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'chapters': [],
+                'message': '未找到保存的章节目录配置'
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'加载失败：{str(e)}'
         }), 500
 
 
