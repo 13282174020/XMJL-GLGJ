@@ -1511,7 +1511,7 @@ def generate_word_document(template_type, requirement_content, template_content,
     
     # 递归渲染目录
     render_doc_toc(doc, user_chapters, styles)
-    
+
     doc.add_page_break()
     if progress_callback:
         progress_callback(15, "目录完成")
@@ -1520,12 +1520,16 @@ def generate_word_document(template_type, requirement_content, template_content,
     total_chapters = len(user_chapters)
 
     for idx, chapter in enumerate(user_chapters):
-        # 添加章节标题
+        # 添加章节标题（一级标题）
         add_heading(doc, f"{chapter['number']} {chapter['title']}", level=1, styles=styles)
 
-        # 递归生成子章节
-        generate_chapter_content(doc, chapter, requirement_content, template_content, 
-                                  user_prompt, api_key, model, styles)
+        # 递归生成子章节内容（从二级标题开始）
+        if chapter.get('children'):
+            for child in chapter['children']:
+                child_level = child.get('level', 2)
+                add_heading(doc, f"{child['number']} {child['title']}", level=child_level, styles=styles)
+                generate_chapter_content(doc, child, requirement_content, template_content,
+                                          user_prompt, api_key, model, styles)
 
         doc.add_page_break()
 
@@ -1583,7 +1587,7 @@ def generate_local_content(section_title, requirement_content, template_content,
 
         '分析': f"""本节对项目进行全面深入的分析。分析内容包括现状分析、需求分析、技术可行性分析、经济可行性分析等多个方面。
 
-通过系统性的分析，为项目方案的制定提供科学依据。分析过程中采用了定性与定量相结合的方法，确保分���结果的客观性和准确性。
+通过系统性的分析，为项目方案的制定提供科学依据。分析过程中采用了定性与定量相结合的方法，确保分����结果的客观性和准确性。
 
 结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目决策提供参考依据。""",
 
@@ -1660,25 +1664,26 @@ def generate_local_content(section_title, requirement_content, template_content,
 
 def generate_chapter_content(doc, chapter_node, requirement_content, template_content,
                               user_prompt, api_key, model, styles, depth=0):
-    """递归生成章节内容（使用本地生成方式）"""
-
-    # 生成子章节内容
+    """
+    递归生成章节内容（使用本地生成方式）
+    严格按照目录树结构生成标题和内容
+    """
+    # 如果当前节点有子节点，先处理子节点
     if chapter_node.get('children'):
         for child in chapter_node['children']:
-            # 添加子章节标题
-            level = min(child.get('level', 2), 4)  # 最多支持 4 级标题
-            add_heading(doc, f"{child['number']} {child['title']}", level=level, styles=styles)
-
-            # 如果有更深层级的子节点，递归处理
-            if child.get('children'):
-                generate_chapter_content(doc, child, requirement_content, template_content,
-                                          user_prompt, api_key, model, styles, depth + 1)
-            else:
-                # 叶子节点，使用本地方式生成内容
-                content = generate_local_content(child['title'], requirement_content, template_content, user_prompt)
-                for para_text in content.split('\n'):
-                    if para_text.strip():
-                        add_normal_paragraph(doc, para_text.strip(), styles=styles)
+            child_level = child.get('level', 2)
+            # 根据层级添加标题
+            add_heading(doc, f"{child['number']} {child['title']}", level=child_level, styles=styles)
+            
+            # 递归处理子节点
+            generate_chapter_content(doc, child, requirement_content, template_content,
+                                      user_prompt, api_key, model, styles, depth + 1)
+    else:
+        # 叶子节点，生成内容
+        content = generate_local_content(chapter_node['title'], requirement_content, template_content, user_prompt)
+        for para_text in content.split('\n'):
+            if para_text.strip():
+                add_normal_paragraph(doc, para_text.strip(), styles=styles)
 
 
 def generate_chapter(doc, chapter_title, sections, requirement_content, template_content,
