@@ -444,6 +444,127 @@ def read_txt_text(file_path):
             return f"读取失败：{str(e)}"
 
 
+def scan_template_styles(file_path):
+    """扫描 Word 模板文件，提取章节目录结构和样式信息"""
+    try:
+        doc = Document(file_path)
+        chapters = []
+        current_chapter = None
+        
+        for para in doc.paragraphs:
+            text = para.text.strip()
+            if not text:
+                continue
+            
+            # 识别章节标题（匹配 1, 1.1, 1.1.1 等格式）
+            chapter_match = re.match(r'^(\d+)\s+(.+)$', text)
+            section_match = re.match(r'^(\d+\.\d+)\s+(.+)$', text)
+            sub_section_match = re.match(r'^(\d+\.\d+\.\d+)\s+(.+)$', text)
+            
+            if chapter_match:
+                # 章标题（一级标题）
+                style_info = extract_paragraph_style(para)
+                current_chapter = {
+                    'title': text,
+                    'number': chapter_match.group(1),
+                    'sections': [],
+                    'style': style_info
+                }
+                chapters.append(current_chapter)
+            elif section_match and current_chapter:
+                # 节标题（二级标题）
+                style_info = extract_paragraph_style(para)
+                current_chapter['sections'].append({
+                    'title': text,
+                    'number': section_match.group(1),
+                    'style': style_info
+                })
+            elif sub_section_match and current_chapter and current_chapter['sections']:
+                # 小节标题（三级标题）
+                style_info = extract_paragraph_style(para)
+                current_chapter['sections'][-1].setdefault('sub_sections', []).append({
+                    'title': text,
+                    'number': sub_section_match.group(1),
+                    'style': style_info
+                })
+        
+        return {
+            'success': True,
+            'chapters': chapters,
+            'message': f'成功扫描 {len(chapters)} 个章节'
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'chapters': [],
+            'message': f'扫描失败：{str(e)}'
+        }
+
+
+def extract_paragraph_style(para):
+    """提取段落的样式信息"""
+    style_info = {
+        'font_name': '',
+        'font_size': 0,
+        'bold': False,
+        'italic': False,
+        'underline': False,
+        'color': '',
+        'alignment': '',
+        'line_spacing': 0,
+        'space_before': 0,
+        'space_after': 0,
+        'first_line_indent': 0
+    }
+    
+    try:
+        # 获取段落格式
+        para_format = para.paragraph_format
+        
+        # 对齐方式
+        alignment_map = {
+            0: 'left',
+            1: 'center',
+            2: 'right',
+            3: 'justify'
+        }
+        style_info['alignment'] = alignment_map.get(para_format.alignment, 'left')
+        
+        # 间距和缩进
+        if hasattr(para_format, 'line_spacing') and para_format.line_spacing:
+            style_info['line_spacing'] = float(para_format.line_spacing)
+        if hasattr(para_format, 'space_before') and para_format.space_before:
+            style_info['space_before'] = float(para_format.space_before)
+        if hasattr(para_format, 'space_after') and para_format.space_after:
+            style_info['space_after'] = float(para_format.space_after)
+        if hasattr(para_format, 'first_line_indent') and para_format.first_line_indent:
+            style_info['first_line_indent'] = float(para_format.first_line_indent)
+        
+        # 获取第一个 run 的字体样式（通常段落内样式一致）
+        if para.runs:
+            run = para.runs[0]
+            style_info['font_name'] = run.font.name or ''
+            style_info['font_size'] = float(run.font.size) if run.font.size else 0
+            style_info['bold'] = run.font.bold or False
+            style_info['italic'] = run.font.italic or False
+            style_info['underline'] = run.font.underline or False
+            
+            # 尝试获取中文字体名称
+            try:
+                from docx.oxml.ns import qn
+                rFonts = run._element.rPr.rFonts
+                if rFonts is not None and hasattr(rFonts, 'get'):
+                    east_asia = rFonts.get(qn('w:eastAsia'))
+                    if east_asia:
+                        style_info['font_name'] = east_asia
+            except:
+                pass
+    except Exception as e:
+        print(f"提取样式失败：{e}")
+    
+    return style_info
+
+
 def call_bailian_api(prompt, api_key, model='qwen-max'):
     """调用阿里云百炼平台 API 生成内容（支持多模型和应用 API）"""
     
@@ -660,61 +781,145 @@ def generate_content_with_ai(requirement_content, template_content, user_prompt,
     return call_bailian_api(prompt, api_key, model)
 
 
-def add_heading(doc, text, level=1):
-    """添加标题"""
+def load_style_config():
+    """加载样式配置"""
+    styles_path = os.path.join(app.config['UPLOAD_FOLDER'], 'style_config.json')
+    default_styles = {
+        'heading1': {
+            'font_name': '黑体',
+            'font_size': 22,
+            'bold': True,
+            'alignment': 'center'
+        },
+        'heading2': {
+            'font_name': '楷体',
+            'font_size': 16,
+            'bold': True,
+            'alignment': 'left'
+        },
+        'heading3': {
+            'font_name': '楷体',
+            'font_size': 14,
+            'bold': True,
+            'alignment': 'left'
+        },
+        'normal': {
+            'font_name': '仿宋',
+            'font_size': 10.5,
+            'line_spacing': 1.5,
+            'first_line_indent': 0.74
+        }
+    }
+    
+    if os.path.exists(styles_path):
+        try:
+            with open(styles_path, 'r', encoding='utf-8') as f:
+                styles = json.load(f)
+            # 合并用户配置和默认配置
+            for key in default_styles:
+                if key in styles:
+                    default_styles[key].update(styles[key])
+        except:
+            pass
+    
+    return default_styles
+
+
+def add_heading(doc, text, level=1, styles=None):
+    """添加标题 - 支持自定义样式配置"""
+    if styles is None:
+        styles = load_style_config()
+    
     if level == 1:
+        style = styles.get('heading1', {})
         heading = doc.add_heading(text, level=1)
-        heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # 对齐方式
+        align_map = {'center': WD_ALIGN_PARAGRAPH.CENTER, 'left': WD_ALIGN_PARAGRAPH.LEFT, 
+                     'right': WD_ALIGN_PARAGRAPH.RIGHT, 'justify': WD_ALIGN_PARAGRAPH.JUSTIFY}
+        heading.alignment = align_map.get(style.get('alignment', 'center'), WD_ALIGN_PARAGRAPH.CENTER)
+        
+        # 设置字体样式
         for run in heading.runs:
-            run.font.name = '黑体'
-            run.font.size = Pt(22)
-            run.font.bold = True
-            run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
+            run.font.name = style.get('font_name', '黑体')
+            run.font.size = Pt(style.get('font_size', 22))
+            run.font.bold = style.get('bold', True)
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '黑体'))
+        
         heading.paragraph_format.space_before = Cm(0)
         heading.paragraph_format.space_after = Cm(0.5)
+        
     elif level == 2:
+        style = styles.get('heading2', {})
         heading = doc.add_heading(text, level=2)
+        
+        align_map = {'center': WD_ALIGN_PARAGRAPH.CENTER, 'left': WD_ALIGN_PARAGRAPH.LEFT,
+                     'right': WD_ALIGN_PARAGRAPH.RIGHT, 'justify': WD_ALIGN_PARAGRAPH.JUSTIFY}
+        heading.alignment = align_map.get(style.get('alignment', 'left'), WD_ALIGN_PARAGRAPH.LEFT)
+        
         for run in heading.runs:
-            run.font.name = '楷体'
-            run.font.size = Pt(16)
-            run.font.bold = True
-            run._element.rPr.rFonts.set(qn('w:eastAsia'), '楷体')
+            run.font.name = style.get('font_name', '楷体')
+            run.font.size = Pt(style.get('font_size', 16))
+            run.font.bold = style.get('bold', True)
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '楷体'))
+        
         heading.paragraph_format.space_before = Cm(0.5)
         heading.paragraph_format.space_after = Cm(0.5)
+        
     elif level == 3:
+        style = styles.get('heading3', {})
         heading = doc.add_heading(text, level=3)
+        
+        align_map = {'center': WD_ALIGN_PARAGRAPH.CENTER, 'left': WD_ALIGN_PARAGRAPH.LEFT,
+                     'right': WD_ALIGN_PARAGRAPH.RIGHT, 'justify': WD_ALIGN_PARAGRAPH.JUSTIFY}
+        heading.alignment = align_map.get(style.get('alignment', 'left'), WD_ALIGN_PARAGRAPH.LEFT)
+        
         for run in heading.runs:
-            run.font.name = '楷体'
-            run.font.size = Pt(14)
-            run.font.bold = True
-            run._element.rPr.rFonts.set(qn('w:eastAsia'), '楷体')
+            run.font.name = style.get('font_name', '楷体')
+            run.font.size = Pt(style.get('font_size', 14))
+            run.font.bold = style.get('bold', True)
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '楷体'))
+        
         heading.paragraph_format.space_before = Cm(0.3)
         heading.paragraph_format.space_after = Cm(0.3)
+        
     elif level == 4:
+        style = styles.get('heading3', {})
         heading = doc.add_paragraph()
         run = heading.add_run(text)
-        run.font.name = '仿宋'
-        run.font.size = Pt(10.5)
-        run.font.bold = True
-        run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+        run.font.name = style.get('font_name', '楷体')
+        run.font.size = Pt(style.get('font_size', 14))
+        run.font.bold = style.get('bold', True)
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '楷体'))
         heading.paragraph_format.first_line_indent = Cm(0.74)
         heading.paragraph_format.space_before = Cm(0)
         heading.paragraph_format.space_after = Cm(0)
+        
     return heading
 
 
-def add_normal_paragraph(doc, text, indent=True):
-    """添加正文段落"""
+def add_normal_paragraph(doc, text, indent=True, styles=None):
+    """添加正文段落 - 支持自定义样式配置"""
+    if styles is None:
+        styles = load_style_config()
+    
+    style = styles.get('normal', {})
+    
     para = doc.add_paragraph()
     if not text.strip():
         return para
+    
     run = para.add_run(text)
-    run.font.name = '仿宋'
-    run.font.size = Pt(10.5)
-    run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
-    if indent:
-        para.paragraph_format.first_line_indent = Cm(0.74)
-    para.paragraph_format.line_spacing = 1.5
+    run.font.name = style.get('font_name', '仿宋')
+    run.font.size = Pt(style.get('font_size', 10.5))
+    run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '仿宋'))
+    
+    if indent and style.get('first_line_indent'):
+        para.paragraph_format.first_line_indent = Cm(style.get('first_line_indent', 0.74))
+    
+    if style.get('line_spacing'):
+        para.paragraph_format.line_spacing = style.get('line_spacing', 1.5)
+    
     para.paragraph_format.space_before = Cm(0)
     para.paragraph_format.space_after = Cm(0)
     return para
@@ -1380,6 +1585,137 @@ def download(filename):
     return jsonify({'error': '文件不存在'}), 404
 
 
+@app.route('/api/template/scan', methods=['POST'])
+def scan_template():
+    """扫描上传的模板文件，提取章节目录和样式信息"""
+    try:
+        if 'template' not in request.files:
+            return jsonify({'success': False, 'message': '请上传模板文件'}), 400
+        
+        file = request.files['template']
+        if file.filename == '':
+            return jsonify({'success': False, 'message': '未选择文件'}), 400
+        
+        if not file.filename.endswith('.docx'):
+            return jsonify({'success': False, 'message': '请上传 .docx 格式的 Word 文件'}), 400
+        
+        # 保存临时文件
+        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f'temp_scan_{uuid.uuid4().hex[:8]}.docx')
+        file.save(temp_path)
+        
+        try:
+            # 扫描模板样式
+            result = scan_template_styles(temp_path)
+            
+            if result['success']:
+                return jsonify({
+                    'success': True,
+                    'message': result['message'],
+                    'chapters': result['chapters']
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': result['message']
+                }), 400
+        finally:
+            # 删除临时文件
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'message': f'扫描失败：{str(e)}',
+            'detail': traceback.format_exc()
+        }), 500
+
+
+@app.route('/api/styles/save', methods=['POST'])
+def save_styles():
+    """保存用户配置的样式"""
+    try:
+        data = request.json
+        
+        # 样式配置包括：
+        # - heading1: 一级标题样式（章标题）
+        # - heading2: 二级标题样式（节标题）
+        # - heading3: 三级标题样式（小节标题）
+        # - normal: 正文样式
+        styles = data.get('styles', {})
+        
+        # 将样式配置保存到文件
+        styles_path = os.path.join(app.config['UPLOAD_FOLDER'], 'style_config.json')
+        with open(styles_path, 'w', encoding='utf-8') as f:
+            json.dump(styles, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'message': '样式配置已保存'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'保存失败：{str(e)}'
+        }), 500
+
+
+@app.route('/api/styles/load', methods=['GET'])
+def load_styles():
+    """加载已保存的样式配置"""
+    try:
+        styles_path = os.path.join(app.config['UPLOAD_FOLDER'], 'style_config.json')
+        
+        if os.path.exists(styles_path):
+            with open(styles_path, 'r', encoding='utf-8') as f:
+                styles = json.load(f)
+            return jsonify({
+                'success': True,
+                'styles': styles
+            })
+        else:
+            # 返回默认样式
+            default_styles = {
+                'heading1': {
+                    'font_name': '黑体',
+                    'font_size': 22,
+                    'bold': True,
+                    'alignment': 'center'
+                },
+                'heading2': {
+                    'font_name': '楷体',
+                    'font_size': 16,
+                    'bold': True,
+                    'alignment': 'left'
+                },
+                'heading3': {
+                    'font_name': '楷体',
+                    'font_size': 14,
+                    'bold': True,
+                    'alignment': 'left'
+                },
+                'normal': {
+                    'font_name': '仿宋',
+                    'font_size': 10.5,
+                    'line_spacing': 1.5,
+                    'first_line_indent': 0.74
+                }
+            }
+            return jsonify({
+                'success': True,
+                'styles': default_styles,
+                'message': '未找到自定义配置，返回默认样式'
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'加载失败：{str(e)}'
+        }), 500
+
+
 @app.route('/api/validate-key', methods=['POST'])
 def validate_api_key():
     """验证 API Key 是否有效"""
@@ -1434,7 +1770,7 @@ def validate_api_key():
         elif response.status_code == 401:
             return jsonify({'valid': False, 'message': 'API Key 无效或已过期，请检查 Key 是否正确'})
         elif response.status_code == 403:
-            return jsonify({'valid': False, 'message': '权限不足，请检查是否开通了对应服务'})
+            return jsonify({'valid': False, 'message': '权限不足，请检查是否开通了对应���务'})
         elif response.status_code == 404 and is_app_api:
             return jsonify({'valid': False, 'message': f'APP_ID ({app_id}) 不存在或无权访问'})
         elif response.status_code == 429:

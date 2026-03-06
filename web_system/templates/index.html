@@ -472,6 +472,7 @@
             </h1>
             <div class="header-actions">
                 <a href="/task-center" style="color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 6px; font-size: 13px;">📊 任务管理中心</a>
+                <button onclick="showStylesModal()">🎨 样式配置</button>
                 <button onclick="showHelpModal()">❓ 帮助</button>
                 <button onclick="showTemplatesModal()">📋 模板选择</button>
             </div>
@@ -841,7 +842,7 @@
                     // 任务提交成功，跳转到任务管理中心
                     progressBar.style.width = '100%';
                     progressText.textContent = '任务已提交，正在跳转到任务管理中心...';
-                    
+
                     setTimeout(() => {
                         window.location.href = '/task-center';
                     }, 1500);
@@ -849,7 +850,7 @@
                     // 提交失败
                     loading.classList.remove('show');
                     submitBtn.disabled = false;
-                    
+
                     result.className = 'result error';
                     resultTitle.textContent = '❌ 提交失败';
                     resultMessage.textContent = data.message || '未知错误';
@@ -863,6 +864,323 @@
                 resultMessage.textContent = '网络错误：' + error.message;
             }
         });
+
+        // ========== 样式配置功能 ==========
+        
+        // 显示样式配置弹窗
+        function showStylesModal() {
+            loadStylesAndShowModal();
+        }
+
+        function closeStylesModal() {
+            document.getElementById('stylesModal').classList.remove('show');
+        }
+
+        // 加载样式配置并显示弹窗
+        async function loadStylesAndShowModal() {
+            try {
+                const response = await fetch('/api/styles/load');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const styles = data.styles;
+                    
+                    // 填充一级标题样式
+                    document.getElementById('h1_font').value = styles.heading1?.font_name || '黑体';
+                    document.getElementById('h1_size').value = styles.heading1?.font_size || 22;
+                    document.getElementById('h1_bold').checked = styles.heading1?.bold ?? true;
+                    document.getElementById('h1_align').value = styles.heading1?.alignment || 'center';
+                    
+                    // 填充二级标题样式
+                    document.getElementById('h2_font').value = styles.heading2?.font_name || '楷体';
+                    document.getElementById('h2_size').value = styles.heading2?.font_size || 16;
+                    document.getElementById('h2_bold').checked = styles.heading2?.bold ?? true;
+                    document.getElementById('h2_align').value = styles.heading2?.alignment || 'left';
+                    
+                    // 填充三级标题样式
+                    document.getElementById('h3_font').value = styles.heading3?.font_name || '楷体';
+                    document.getElementById('h3_size').value = styles.heading3?.font_size || 14;
+                    document.getElementById('h3_bold').checked = styles.heading3?.bold ?? true;
+                    document.getElementById('h3_align').value = styles.heading3?.alignment || 'left';
+                    
+                    // 填充正文样式
+                    document.getElementById('normal_font').value = styles.normal?.font_name || '仿宋';
+                    document.getElementById('normal_size').value = styles.normal?.font_size || 10.5;
+                    document.getElementById('normal_spacing').value = styles.normal?.line_spacing || 1.5;
+                    document.getElementById('normal_indent').value = styles.normal?.first_line_indent || 0.74;
+                }
+                
+                document.getElementById('stylesModal').classList.add('show');
+            } catch (error) {
+                alert('加载样式配置失败：' + error.message);
+            }
+        }
+
+        // 保存样式配置
+        async function saveStyles() {
+            const styles = {
+                heading1: {
+                    font_name: document.getElementById('h1_font').value,
+                    font_size: parseFloat(document.getElementById('h1_size').value),
+                    bold: document.getElementById('h1_bold').checked,
+                    alignment: document.getElementById('h1_align').value
+                },
+                heading2: {
+                    font_name: document.getElementById('h2_font').value,
+                    font_size: parseFloat(document.getElementById('h2_size').value),
+                    bold: document.getElementById('h2_bold').checked,
+                    alignment: document.getElementById('h2_align').value
+                },
+                heading3: {
+                    font_name: document.getElementById('h3_font').value,
+                    font_size: parseFloat(document.getElementById('h3_size').value),
+                    bold: document.getElementById('h3_bold').checked,
+                    alignment: document.getElementById('h3_align').value
+                },
+                normal: {
+                    font_name: document.getElementById('normal_font').value,
+                    font_size: parseFloat(document.getElementById('normal_size').value),
+                    line_spacing: parseFloat(document.getElementById('normal_spacing').value),
+                    first_line_indent: parseFloat(document.getElementById('normal_indent').value)
+                }
+            };
+
+            try {
+                const response = await fetch('/api/styles/save', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({styles: styles})
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    alert('样式配置已保存！下次生成文档时将使用新配置。');
+                    closeStylesModal();
+                } else {
+                    alert('保存失败：' + data.message);
+                }
+            } catch (error) {
+                alert('保存失败：' + error.message);
+            }
+        }
+
+        // 扫描上传的模板文件提取样式
+        async function scanTemplateStyles() {
+            const templateFile = document.getElementById('templateFile').files[0];
+            if (!templateFile) {
+                alert('请先上传模板文件');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('template', templateFile);
+
+            try {
+                const response = await fetch('/api/template/scan', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    alert('模板扫描成功！共扫描到 ' + data.chapters.length + ' 个章节。\\n\\n注意：模板样式提取功能正在开发中，当前使用默认样式配置。');
+                    // TODO: 根据扫描结果自动填充样式配置
+                } else {
+                    alert('扫描失败：' + data.message);
+                }
+            } catch (error) {
+                alert('扫描失败：' + error.message);
+            }
+        }
     </script>
+
+    <!-- 样式配置弹窗 -->
+    <div class="modal" id="stylesModal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3>🎨 文档样式配置</h3>
+                <button class="modal-close" onclick="closeStylesModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="tips" style="margin-bottom: 15px;">
+                    <h4 style="margin-bottom: 8px;">💡 使用说明</h4>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #666;">
+                        <li>上传模板文件后，可点击「扫描模板」自动提取样式（开发中）</li>
+                        <li>也可手动配置各级标题和正文的字体、字号、对齐方式等</li>
+                        <li>配置保存后，下次生成文档时将使用新配置</li>
+                    </ul>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <h4 style="margin-bottom: 10px; color: #1e3c72;">📑 一级标题（章标题）</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div>
+                                <label style="font-size: 12px;">字体</label>
+                                <select id="h1_font" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option>黑体</option>
+                                    <option>楷体</option>
+                                    <option>仿宋</option>
+                                    <option>宋体</option>
+                                    <option>微软雅黑</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 12px;">字号</label>
+                                <select id="h1_size" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="12">12 磅</option>
+                                    <option value="14">14 磅</option>
+                                    <option value="16">16 磅</option>
+                                    <option value="18">18 磅</option>
+                                    <option value="22" selected>22 磅</option>
+                                    <option value="26">26 磅</option>
+                                    <option value="36">36 磅</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 12px;">对齐</label>
+                                <select id="h1_align" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="center">居中</option>
+                                    <option value="left">左对齐</option>
+                                    <option value="right">右对齐</option>
+                                </select>
+                            </div>
+                            <div style="display: flex; align-items: center; padding-top: 20px;">
+                                <label style="font-size: 12px;">
+                                    <input type="checkbox" id="h1_bold" checked> 加粗
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 style="margin-bottom: 10px; color: #1e3c72;">📑 二级标题（节标题）</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div>
+                                <label style="font-size: 12px;">字体</label>
+                                <select id="h2_font" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option>黑体</option>
+                                    <option value="楷体" selected>楷体</option>
+                                    <option>仿宋</option>
+                                    <option>宋体</option>
+                                    <option>微软雅黑</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 12px;">字号</label>
+                                <select id="h2_size" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="12">12 磅</option>
+                                    <option value="14">14 磅</option>
+                                    <option value="16" selected>16 磅</option>
+                                    <option value="18">18 磅</option>
+                                    <option value="22">22 磅</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 12px;">对齐</label>
+                                <select id="h2_align" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="center">居中</option>
+                                    <option value="left" selected>左对齐</option>
+                                    <option value="right">右对齐</option>
+                                </select>
+                            </div>
+                            <div style="display: flex; align-items: center; padding-top: 20px;">
+                                <label style="font-size: 12px;">
+                                    <input type="checkbox" id="h2_bold" checked> 加粗
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 style="margin-bottom: 10px; color: #1e3c72;">📑 三级标题（小节标题）</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div>
+                                <label style="font-size: 12px;">字体</label>
+                                <select id="h3_font" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option>黑体</option>
+                                    <option value="楷体" selected>楷体</option>
+                                    <option>仿宋</option>
+                                    <option>宋体</option>
+                                    <option>微软雅黑</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 12px;">字号</label>
+                                <select id="h3_size" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="10">10 磅</option>
+                                    <option value="12">12 磅</option>
+                                    <option value="14" selected>14 磅</option>
+                                    <option value="16">16 磅</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 12px;">对齐</label>
+                                <select id="h3_align" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="center">居中</option>
+                                    <option value="left" selected>左对齐</option>
+                                    <option value="right">右对齐</option>
+                                </select>
+                            </div>
+                            <div style="display: flex; align-items: center; padding-top: 20px;">
+                                <label style="font-size: 12px;">
+                                    <input type="checkbox" id="h3_bold" checked> 加粗
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 style="margin-bottom: 10px; color: #1e3c72;">📝 正文样式</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div>
+                                <label style="font-size: 12px;">字体</label>
+                                <select id="normal_font" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option>黑体</option>
+                                    <option>楷体</option>
+                                    <option value="仿宋" selected>仿宋</option>
+                                    <option>宋体</option>
+                                    <option>微软雅黑</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 12px;">字号</label>
+                                <select id="normal_size" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="9">9 磅</option>
+                                    <option value="10">10 磅</option>
+                                    <option value="10.5" selected>10.5 磅</option>
+                                    <option value="11">11 磅</option>
+                                    <option value="12">12 磅</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 12px;">行距</label>
+                                <select id="normal_spacing" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="1">1 倍</option>
+                                    <option value="1.25">1.25 倍</option>
+                                    <option value="1.5" selected>1.5 倍</option>
+                                    <option value="2">2 倍</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 12px;">首行缩进</label>
+                                <select id="normal_indent" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="0">无缩进</option>
+                                    <option value="0.74" selected>2 字符</option>
+                                    <option value="1">1 厘米</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" onclick="scanTemplateStyles()" title="需要先上传模板文件">📷 扫描模板</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeStylesModal()">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveStyles()">💾 保存配置</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
