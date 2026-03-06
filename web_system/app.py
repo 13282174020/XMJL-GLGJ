@@ -506,8 +506,15 @@ def scan_template_styles(file_path):
             if len(text) < 15 and any(kw in text for kw in ['预算', '费用', '表', '清单']):
                 continue
             
-            # 尝试匹配带编号的章节标题（支持无限层级）
+            # 尝试匹配带编号的章节标题（支持多种格式）
+            # 格式 1: 数字编号 1 项目概况 或 1.1 项目名称
+            # 格式 2: 中文编号 第一章 项目概况 或 第一节 项目名称
+            # 格式 3: 中文数字 一、项目概况
+            
             numbered_match = re.match(r'^(\d+(?:\.\d+)*)\s+(.+)$', text)
+            chinese_chapter_match = re.match(r'^第 ([一二三四五六七八九十\d]+) 章\s+(.+)$', text)
+            chinese_section_match = re.match(r'^第 ([一二三四五六七八九十\d]+) 节\s+(.+)$', text)
+            chinese_num_match = re.match(r'^([一二三四五六七八九十]+)[、.]\s*(.+)$', text)
             
             if numbered_match:
                 number = numbered_match.group(1)
@@ -537,6 +544,59 @@ def scan_template_styles(file_path):
                 }
                 
                 add_to_parent(chapters, chapter_node, number)
+            
+            elif chinese_chapter_match:
+                # 中文章节编号：第一章 项目概况
+                chapter_num = chinese_chapter_match.group(1)
+                title = chinese_chapter_match.group(2)
+                
+                style_info = extract_paragraph_style(para)
+                
+                chapter_node = {
+                    'number': f'第{chapter_num}章',
+                    'title': title,
+                    'level': 1,
+                    'style': style_info,
+                    'children': []
+                }
+                
+                chapters.append(chapter_node)
+            
+            elif chinese_section_match:
+                # 中文节编号：第一节 项目名称
+                section_num = chinese_section_match.group(1)
+                title = chinese_section_match.group(2)
+                
+                style_info = extract_paragraph_style(para)
+                
+                chapter_node = {
+                    'number': f'第{section_num}节',
+                    'title': title,
+                    'level': 2,
+                    'style': style_info,
+                    'children': []
+                }
+                
+                if chapters:
+                    chapters[-1]['children'].append(chapter_node)
+            
+            elif chinese_num_match:
+                # 中文数字编号：一、项目概况
+                num = chinese_num_match.group(1)
+                title = chinese_num_match.group(2)
+                
+                style_info = extract_paragraph_style(para)
+                
+                chapter_node = {
+                    'number': f'{num}、',
+                    'title': title,
+                    'level': 1,
+                    'style': style_info,
+                    'children': []
+                }
+                
+                chapters.append(chapter_node)
+            
             else:
                 # 尝试匹配没有编号的章节标题
                 is_chapter = False
