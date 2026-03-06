@@ -450,19 +450,64 @@ def scan_template_styles(file_path):
         doc = Document(file_path)
         chapters = []
         
+        # 常见的一级章节关键词（用于识别没有编号的章节标题）
+        # 这些关键词通常出现在章节标题的开头
+        chapter_start_keywords = [
+            '第', '一、', '1', '第一章', '第二章', '第三章', '第四章', '第五章',
+            '项目概况', '项目总论', '项目建设单位', '项目建设的必要性', '需求分析',
+            '项目建设方案', '总体思路', '总体框架', '技术路线', '投资估算',
+            '资金筹措', '效益分析', '风险分析', '结论与建议', '结论', '建议',
+            '市场分析', '建设方案', '实施计划', '环保', '节能', '招标', '安全',
+            '组织机构', '人员配置', '进度安排', '财务评价', '附录', '附件'
+        ]
+        
+        # 二级章节关键词
+        section_keywords = [
+            '概况', '必要性', '分析', '方案', '思路', '框架', '路线', '目标',
+            '内容', '规模', '周期', '估算', '筹措', '效益', '风险', '对策',
+            '背景', '现状', '需求', '设计', '建设', '管理', '运维', '培训'
+        ]
+        
         for para in doc.paragraphs:
             text = para.text.strip()
             if not text:
                 continue
             
-            # 识别章节标题 - 支持无限层级（匹配 1, 1.1, 1.1.1, 1.1.1.1, 1.1.1.1.1 等）
-            # 正则表达式匹配：数字开头，后跟 0 个或多个 .数字 组合
-            chapter_match = re.match(r'^(\d+(?:\.\d+)*)\s+(.+)$', text)
+            # 跳过太短的文本（可能是页码）
+            if len(text) < 2:
+                continue
             
-            if chapter_match:
-                number = chapter_match.group(1)  # 如 "1.2.3"
-                title = chapter_match.group(2)   # 如 "项目名称"
-                level = number.count('.') + 1    # 层级：1=章，2=节，3=小节，以此类推
+            # 跳过纯数字（可能是页码）
+            if text.isdigit():
+                continue
+            
+            # 跳过包含句号的文本（通常是正文）
+            if '。' in text and len(text) > 30:
+                continue
+            
+            # 跳过包含冒号的文本（通常是列表项或说明）
+            if ':' in text or ':' in text:
+                continue
+            
+            # 尝试匹配带编号的章节标题（支持无限层级）
+            numbered_match = re.match(r'^(\d+(?:\.\d+)*)\s+(.+)$', text)
+            
+            if numbered_match:
+                number = numbered_match.group(1)
+                title = numbered_match.group(2)
+                level = number.count('.') + 1
+                
+                # 排除类似"1、"这样的列表项（后面跟顿号）
+                if title.startswith('、') or title.startswith('，') or title.startswith(';'):
+                    continue
+                
+                # 排除过长的文本（不是标题）
+                if len(title) > 80:
+                    continue
+                
+                # 排除 GB/T 等标准编号
+                if title.startswith('《') or 'GB/T' in title:
+                    continue
                 
                 style_info = extract_paragraph_style(para)
                 
@@ -471,16 +516,45 @@ def scan_template_styles(file_path):
                     'title': title,
                     'level': level,
                     'style': style_info,
-                    'children': []  # 子节点列表
+                    'children': []
                 }
                 
-                # 将节点添加到正确的父节点下
                 add_to_parent(chapters, chapter_node, number)
+            else:
+                # 尝试匹配没有编号的章节标题
+                is_chapter = False
+                level = 1
+                
+                # 检查是否以章节关键词开头
+                for keyword in chapter_start_keywords:
+                    if text.startswith(keyword) and len(text) < 40:
+                        is_chapter = True
+                        break
+                
+                # 或者文本较短且包含章节关键词
+                if not is_chapter and len(text) < 25:
+                    for keyword in chapter_start_keywords:
+                        if keyword in text:
+                            is_chapter = True
+                            break
+                
+                if is_chapter:
+                    style_info = extract_paragraph_style(para)
+                    
+                    chapter_node = {
+                        'number': '',  # 编号由用户后续编辑
+                        'title': text,
+                        'level': level,
+                        'style': style_info,
+                        'children': []
+                    }
+                    
+                    chapters.append(chapter_node)
         
         return {
             'success': True,
             'chapters': chapters,
-            'message': f'成功扫描 {len(chapters)} 个一级章节',
+            'message': f'成功扫描 {len(chapters)} 个章节',
             'total_nodes': count_all_nodes(chapters)
         }
     except Exception as e:
