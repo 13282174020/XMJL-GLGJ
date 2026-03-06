@@ -700,10 +700,7 @@ def scan_template_styles(file_path):
             '背景', '现状', '需求', '设计', '建设', '管理', '运维', '培训',
             '依据', '职能', '职责', '差距', '问题', '趋势', '评估'
         ]
-        
-        # 获取文档的编号定义
-        numbering = doc.part.numbering_definitions
-        
+
         for para in doc.paragraphs:
             text = para.text.strip()
             if not text:
