@@ -1559,107 +1559,33 @@ def render_doc_toc(doc, chapters, styles, level=0):
         if chapter.get('children'):
             render_doc_toc(doc, chapter['children'], styles, level + 1)
 
-
-def generate_local_content(section_title, requirement_content, template_content, user_prompt):
-    """
-    本地生成章节内容（不使用 AI）
-    根据章节类型生成相应的内容
-    """
-    # 信息提取类章节：直接从需求文档中提取
-    extracted_info = extract_info_from_requirement(section_title, requirement_content)
-    if extracted_info:
-        return extracted_info
-
-    # 对于需要撰写的章节，生成通用内容
-    # 根据章节标题关键词生成不同类型的内容
-    content_templates = {
-        '概况': f"""本节详细阐述项目的基本概况。项目按照相关规范和要求进行编制，确保符合可行性研究报告的标准。
-
-项目概况主要包括项目的背景、建设目标、建设规模、建设内容等基本信息。在编制过程中，充分考虑了项目的特点、建设条件、技术要求等因素，确保报告内容的科学性、合理性和可操作性。
-
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为后续章节的展开提供基础信息支持。""",
-
-        '必要性': f"""本节从多个维度分析项目建设的必要性。首先，从政策层面分析项目是否符合国家和地方的相关政策导向；其次，从需求层面分析项目是否满足实际业务需求；再次，从技术层面分析项目是否具备技术可行性。
-
-项目建设是响应国家政策号召、推动数字化转型的重要举措。通过本项目的实施，将有效提升相关领域的服务能力和管理水平，为经济社会发展提供有力支撑。
-
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，充分论证项目建设的必要性。""",
-
-        '分析': f"""本节对项目进行全面深入的分析。分析内容包括现状分析、需求分析、技术可行性分析、经济可行性分析等多个方面。
-
-通过系统性的分析，为项目方案的制定提供科学依据。分析过程中采用了定性与定量相结合的方法，确保分����结果的客观性和准确性。
-
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目决策提供参考依据。""",
-
-        '方案': f"""本节详细阐述项目的建设方案。方案制定遵循先进性、实用性、经济性、可扩展性等原则，确保方案既满足当前需求，又具备未来发展弹性。
-
-建设方案包括总体架构设计、技术路线选择、主要建设内容、实施路径等关键要素。方案充分考虑了项目的特点、建设条件、技术要求等因素，确保方案的科学性和可操作性。
-
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目实施提供明确的指导。""",
-
-        '设计': f"""本节对项目的技术方案进行详细设计。设计内容包括系统架构设计、功能模块设计、接口设计、数据库设计等关键要素。
-
-技术方案设计遵循标准化、模块化、可扩展的设计原则，采用成熟可靠的技术路线，确保系统的稳定性、安全性和可维护性。
-
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为系统开发提供详细的技术指导。""",
-
-        '建设': f"""本节详细阐述项目的建设内容和实施计划。建设内容根据项目目标和需求确定，包括硬件建设、软件建设、系统集成等多个方面。
-
-实施计划明确了项目建设的时间节点、任务分工、资源配置等关键要素，确保项目按计划有序推进。
-
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目实施提供明确的路线图。""",
-
-        '投资': f"""本节对项目的投资进行估算。投资估算包括硬件设备购置费、软件开发费、系统集成费、工程建设费、其他费用等多个方面。
-
-投资估算采用类比估算法、参数估算法等多种方法，确保估算结果的合理性和准确性。资金来源明确，资金筹措方案可行。
-
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目决策提供投资参考。""",
-
-        '风险': f"""本节对项目可能面临的风险进行识别和分析。风险类型包括技术风险、管理风险、市场风险、政策风险等多个方面。
-
-针对识别出的各类风险，制定了相应的风险应对策略和措施，包括风险规避、风险转移、风险减轻、风险接受等策略。
-
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目风险管理提供指导。""",
-
-        '效益': f"""本节对项目的效益进行分析。效益分析包括经济效益、社会效益、环境效益等多个维度。
-
-通过定量和定性相结合的方法，对项目的投入产出比、投资回收期等经济指标进行测算，同时对项目的社会效益和环境效益进行综合评价。
-
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目决策提供效益参考。""",
-
-        '结论': f"""本节对可行性研究报告的主要结论进行总结。结论包括项目建设的必要性、技术可行性、经济合理性、风险可控性等关键判断。
-
-综合各方面分析结果，本项目具备建设的必要性和可行性，建议尽快启动项目实施。
-
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目决策提供明确的结论建议。""",
-
-        '建议': f"""本节对项目实施提出相关建议。建议内容包括组织保障建议、资金保障建议、技术保障建议、进度控制建议等。
-
-通过提出针对性、可操作性的建议，为项目顺利实施提供保障措施。建议充分考虑了项目的实际情况和可能面临的困难。
-
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目实施提供参考建议。"""
+def get_chapter_content_template(section_title):
+    """根据章节标题返回预定义的内容模板"""
+    templates = {
+        '项目名称': '项目名称：根据项目实际情况填写',
+        '项目建设单位': '建设单位：根据项目实际情况填写',
+        '建设目标': '本项目的建设目标是根据实际需求，制定科学合理的建设方案，确保项目顺利实施并达到预期效果。',
+        '项目概况': '本项目按照相关规范和要求进行编制，确保符合可行性研究报告的标准。',
+        '项目建设单位概况': '项目建设单位的基本情况介绍，包括单位性质、主要职能、组织架构等内容。',
+        '项目实施机构': '项目实施机构负责项目的具体实施工作，包括项目管理、协调推进、质量控制等职责。',
+        '项目建设的必要性': '从政策要求、实际需求、发展趋势等方面论证项目建设的必要性。',
+        '需求分析': '对项目的需求进行全面分析，包括业务需求、功能需求、性能需求等。',
+        '总体思路': '项目建设的总体思路是坚持以需求为导向，以技术为支撑，确保项目建设的科学性和可行性。',
+        '总体框架': '项目总体框架包括架构设计、功能模块、技术路线等核心内容。',
+        '技术路线': '项目采用成熟可靠的技术路线，确保系统的稳定性、安全性和可扩展性。',
+        '投资估算': '投资估算包括硬件设备、软件开发、系统集成、工程建设等费用。',
+        '资金筹措': '项目资金来源明确，筹措方案可行，确保项目顺利实施。',
+        '效益分析': '项目效益包括经济效益、社会效益、环境效益等多个方面。',
+        '风险分析': '项目风险包括技术风险、管理风险、市场风险等，需制定相应的风险应对措施。',
+        '结论': '综合各方面分析，项目具备建设的必要性和可行性。',
+        '建议': '建议尽快启动项目实施，并做好组织保障、资金保障、技术保障等工作。',
     }
-
-    # 匹配最接近的内容模板
-    selected_content = None
-    best_match_score = 0
-
-    for keyword, content in content_templates.items():
-        if keyword in section_title:
-            score = len(keyword)
-            if section_title.startswith(keyword):
-                score += 5
-            if score > best_match_score:
-                best_match_score = score
-                selected_content = content
-
-    if selected_content:
-        return selected_content
-
-    # 默认内容
-    return f"""{section_title}的具体内容。本项目按照相关规范和要求进行编制，确保符合可行性研究报告的标准。
-
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述。在编制过程中，充分考虑了项目的特点、建设条件、技术要求等因素，确保报告内容的科学性、合理性和可操作性。"""
+    if section_title in templates:
+        return templates[section_title]
+    for key, content in templates.items():
+        if key in section_title:
+            return content
+    return f'{section_title}的具体内容根据项目实际情况进行编制。'
 
 
 def generate_chapter_content(doc, chapter_node, requirement_content, template_content,
@@ -1680,7 +1606,7 @@ def generate_chapter_content(doc, chapter_node, requirement_content, template_co
                                       user_prompt, api_key, model, styles, depth + 1)
     else:
         # 叶子节点，生成内容
-        content = generate_local_content(chapter_node['title'], requirement_content, template_content, user_prompt)
+        content = get_chapter_content_template(chapter_node['title'])
         for para_text in content.split('\n'):
             if para_text.strip():
                 add_normal_paragraph(doc, para_text.strip(), styles=styles)
@@ -1695,7 +1621,7 @@ def generate_chapter(doc, chapter_title, sections, requirement_content, template
         add_heading(doc, section_title, level=2)
 
         # 使用本地方式生成内容
-        content = generate_local_content(section_title, requirement_content, template_content, user_prompt)
+        content = get_chapter_content_template(section_title)
         for para_text in content.split('\n'):
             if para_text.strip():
                 add_normal_paragraph(doc, para_text.strip())
