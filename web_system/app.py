@@ -2014,17 +2014,24 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
             node_title = node.get('title', '')
             node_level = node.get('level', level)
             children = node.get('children')
-            
+
             add_heading(doc, f"{node_number} {node_title}", level=node_level, styles=styles)
-            
+
             if children is not None and len(children) > 0:
                 for child in children:
                     render_chapter_content(child, level=node_level + 1)
             else:
-                content = get_chapter_content_template(node_title)
-                for para_text in content.split('\n'):
-                    if para_text.strip():
-                        add_normal_paragraph(doc, para_text.strip(), styles=styles)
+                # 使用 generate_chapter_content 支持 AI 生成
+                generate_chapter_content(
+                    doc=doc,
+                    chapter_node=node,
+                    requirement_content=requirement_content,
+                    template_content=template_content,
+                    user_prompt=user_prompt,
+                    api_key=api_key,
+                    model=model,
+                    styles=styles
+                )
 
         for idx, chapter in enumerate(user_chapters):
             task_manager.update_task_progress(task_id,
