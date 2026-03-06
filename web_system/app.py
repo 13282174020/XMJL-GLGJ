@@ -676,135 +676,123 @@ def read_txt_text(file_path):
             return f"读取失败：{str(e)}"
 
 
+def get_heading_level(style_name):
+    """从样式名获取标题级别"""
+    if style_name and 'Heading' in style_name:
+        try:
+            level_str = style_name.replace('Heading', '').strip()
+            level = int(''.join(filter(str.isdigit, level_str)) or '0')
+            return level if level > 0 else 1
+        except:
+            return 1
+    return 0
+
+
+def generate_chapter_numbering(headings):
+    """
+    根据标题层级生成标准的中文编号
+    L1: 第一章、第二章...
+    L2: 1.1, 1.2...
+    L3: 1.1.1, 1.1.2...
+    L4: (1), (2)...
+    """
+    counters = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    chinese_num = [
+        '零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十',
+        '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十',
+        '二十一', '二十二', '二十三', '二十四', '二十五', '二十六', '二十七', '二十八', '二十九', '三十'
+    ]
+
+    for h in headings:
+        level = h['level']
+        counters[level] += 1
+        for l in range(level + 1, 6):
+            counters[l] = 0
+
+        if level == 1:
+            h['numbering'] = f'第{chinese_num[counters[1]]}章'
+        elif level == 2:
+            h['numbering'] = f'{counters[1]}.{counters[2]}'
+        elif level == 3:
+            h['numbering'] = f'{counters[1]}.{counters[2]}.{counters[3]}'
+        elif level == 4:
+            h['numbering'] = f'({counters[4]})'
+        elif level == 5:
+            h['numbering'] = f'{counters[1]}.{counters[2]}.{counters[3]}.{counters[4]}'
+    return headings
+
+
+def build_chapter_tree(headings):
+    """将扁平的标题列表转换为树形结构"""
+    chapters = []
+    for h in headings:
+        level = h['level']
+        node = {
+            'number': h['numbering'],
+            'title': h['text'],
+            'level': level,
+            'style': h['style'],
+            'children': []
+        }
+        if level == 1:
+            chapters.append(node)
+        else:
+            parent = find_parent_node(chapters, level - 1)
+            if parent:
+                parent['children'].append(node)
+            else:
+                chapters.append(node)
+    return chapters
+
+
+def find_parent_node(chapters, target_level):
+    """递归查找指定层级的最后一个节点"""
+    for chapter in reversed(chapters):
+        if chapter['level'] == target_level:
+            return chapter
+        if chapter.get('children'):
+            result = find_parent_node(chapter['children'], target_level)
+            if result:
+                return result
+    return None
+
+
 def scan_template_styles(file_path):
-    """扫描 Word 模板文件，提取章节目录结构和样式信息（支持无限层级）"""
+    """
+    扫描 Word 模板文件，提取章节目录结构
+    严格基于 Heading 样式和 XML 编号信息提取（参考 extract_toc.py）
+    """
     try:
         doc = Document(file_path)
-        chapters = []
-        
-        # 一级章节标题关键词（通常作为独立章节出现）
-        level1_keywords = [
-            '项目概况', '项目总论', '项目建设单位', '项目建设的必要性', '需求分析',
-            '项目建设方案', '总体思路', '总体框架', '技术路线', '投资估算',
-            '资金筹措', '效益分析', '风险分析', '结论', '建议', '结论和建议',
-            '市场分析', '建设方案', '实施计划', '环保', '节能', '招标', '安全',
-            '组织机构', '人员', '进度', '财务', '评价', '附录', '附件',
-            '项目编审人员名单', '目录', '项目建设单位概况', '项目实施机构',
-            '与数字化改革总体方案的关系', '应用系统设计', '国产化改造', '系统安全'
-        ]
-        
-        # 二级章节标题关键词（通常作为子章节出现）
-        level2_keywords = [
-            '概况', '必要性', '分析', '方案', '思路', '框架', '路线', '目标',
-            '内容', '规模', '周期', '估算', '筹措', '效益', '风险', '对策',
-            '背景', '现状', '需求', '设计', '建设', '管理', '运维', '培训',
-            '依据', '职能', '职责', '差距', '问题', '趋势', '评估'
-        ]
+        headings = []
 
+        # 提取所有 Heading 样式的段落
         for para in doc.paragraphs:
             text = para.text.strip()
             if not text:
                 continue
-            
-            # 跳过太短的文本（可能是页码）
-            if len(text) < 2:
-                continue
-            
-            # 跳过纯数字（可能是页码）
-            if text.isdigit():
-                continue
-            
-            # 跳过包含句号的文本（通常是正文）
-            if '。' in text:
-                continue
-            
-            # 跳过包含冒号的文本（通常是列表项或说明）
-            if ':' in text:
-                continue
-            
-            # 跳过以括号开头的文本（通常是列表项）
-            if text.startswith('(') or text.startswith('（'):
-                continue
-            
-            # 跳过包含"详见"的文本（通常是引用）
-            if '详见' in text:
-                continue
-            
-            # 跳过包含"预算"、"费用"、"表"的短文本（通常是表格标题）
-            if len(text) < 15 and any(kw in text for kw in ['预算', '费用', '表', '清单']):
-                continue
-            
-            # 尝试从 XML 结构中获取编号信息
-            num_info = get_paragraph_numbering(para)
-            
-            if num_info:
-                # 有编号的章节
-                number = num_info['number']
-                level = num_info['level']
-                title = text
-                
-                # 排除过长的文本
-                if len(title) > 80:
-                    continue
-                
-                # 排除 GB/T 等标准编号
-                if title.startswith('《') or 'GB/T' in title or 'DB33' in title:
-                    continue
-                
-                style_info = extract_paragraph_style(para)
-                
-                chapter_node = {
-                    'number': number,
-                    'title': title,
+
+            style_name = para.style.name if para.style else ''
+            level = get_heading_level(style_name)
+
+            if level > 0:
+                headings.append({
                     'level': level,
-                    'style': style_info,
-                    'children': []
-                }
-                
-                if level == 1:
-                    chapters.append(chapter_node)
-                else:
-                    # 添加到最近的父节点
-                    add_to_parent_by_level(chapters, chapter_node, level)
-            
-            else:
-                # 尝试匹配没有编号的章节标题
-                is_chapter = False
-                level = 1
-                
-                # 检查是否包含一级章节关键词（且文本较短）
-                if len(text) < 35:
-                    for keyword in level1_keywords:
-                        if text == keyword or text.startswith(keyword) or keyword in text:
-                            is_chapter = True
-                            level = 1
-                            break
-                
-                # 如果不是章节，继续检查是否是二级章节
-                if not is_chapter and len(text) < 25:
-                    for keyword in level2_keywords:
-                        if keyword in text and len(text) < 20:
-                            is_chapter = True
-                            level = 2
-                            break
-                
-                if is_chapter:
-                    style_info = extract_paragraph_style(para)
-                    
-                    chapter_node = {
-                        'number': '',  # 编号由用户后续编辑
-                        'title': text,
-                        'level': level,
-                        'style': style_info,
-                        'children': []
-                    }
-                    
-                    chapters.append(chapter_node)
-        
+                    'text': text,
+                    'style': style_name,
+                    'numbering': ''
+                })
+
+        # 生成编号
+        headings = generate_chapter_numbering(headings)
+
+        # 构建章节树
+        chapters = build_chapter_tree(headings)
+
         return {
             'success': True,
             'chapters': chapters,
-            'message': f'成功扫描 {len(chapters)} 个章节',
+            'message': f'成功扫描 {len(chapters)} 个一级章节',
             'total_nodes': count_all_nodes(chapters)
         }
     except Exception as e:
@@ -1568,76 +1556,145 @@ def render_doc_toc(doc, chapters, styles, level=0):
             render_doc_toc(doc, chapter['children'], styles, level + 1)
 
 
-def generate_chapter_content(doc, chapter_node, requirement_content, template_content, 
+def generate_local_content(section_title, requirement_content, template_content, user_prompt):
+    """
+    本地生成章节内容（不使用 AI）
+    根据章节类型生成相应的内容
+    """
+    # 信息提取类章节：直接从需求文档中提取
+    extracted_info = extract_info_from_requirement(section_title, requirement_content)
+    if extracted_info:
+        return extracted_info
+
+    # 对于需要撰写的章节，生成通用内容
+    # 根据章节标题关键词生成不同类型的内容
+    content_templates = {
+        '概况': f"""本节详细阐述项目的基本概况。项目按照相关规范和要求进行编制，确保符合可行性研究报告的标准。
+
+项目概况主要包括项目的背景、建设目标、建设规模、建设内容等基本信息。在编制过程中，充分考虑了项目的特点、建设条件、技术要求等因素，确保报告内容的科学性、合理性和可操作性。
+
+结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为后续章节的展开提供基础信息支持。""",
+
+        '必要性': f"""本节从多个维度分析项目建设的必要性。首先，从政策层面分析项目是否符合国家和地方的相关政策导向；其次，从需求层面分析项目是否满足实际业务需求；再次，从技术层面分析项目是否具备技术可行性。
+
+项目建设是响应国家政策号召、推动数字化转型的重要举措。通过本项目的实施，将有效提升相关领域的服务能力和管理水平，为经济社会发展提供有力支撑。
+
+结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，充分论证项目建设的必要性。""",
+
+        '分析': f"""本节对项目进行全面深入的分析。分析内容包括现状分析、需求分析、技术可行性分析、经济可行性分析等多个方面。
+
+通过系统性的分析，为项目方案的制定提供科学依据。分析过程中采用了定性与定量相结合的方法，确保分���结果的客观性和准确性。
+
+结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目决策提供参考依据。""",
+
+        '方案': f"""本节详细阐述项目的建设方案。方案制定遵循先进性、实用性、经济性、可扩展性等原则，确保方案既满足当前需求，又具备未来发展弹性。
+
+建设方案包括总体架构设计、技术路线选择、主要建设内容、实施路径等关键要素。方案充分考虑了项目的特点、建设条件、技术要求等因素，确保方案的科学性和可操作性。
+
+结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目实施提供明确的指导。""",
+
+        '设计': f"""本节对项目的技术方案进行详细设计。设计内容包括系统架构设计、功能模块设计、接口设计、数据库设计等关键要素。
+
+技术方案设计遵循标准化、模块化、可扩展的设计原则，采用成熟可靠的技术路线，确保系统的稳定性、安全性和可维护性。
+
+结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为系统开发提供详细的技术指导。""",
+
+        '建设': f"""本节详细阐述项目的建设内容和实施计划。建设内容根据项目目标和需求确定，包括硬件建设、软件建设、系统集成等多个方面。
+
+实施计划明确了项目建设的时间节点、任务分工、资源配置等关键要素，确保项目按计划有序推进。
+
+结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目实施提供明确的路线图。""",
+
+        '投资': f"""本节对项目的投资进行估算。投资估算包括硬件设备购置费、软件开发费、系统集成费、工程建设费、其他费用等多个方面。
+
+投资估算采用类比估算法、参数估算法等多种方法，确保估算结果的合理性和准确性。资金来源明确，资金筹措方案可行。
+
+结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目决策提供投资参考。""",
+
+        '风险': f"""本节对项目可能面临的风险进行识别和分析。风险类型包括技术风险、管理风险、市场风险、政策风险等多个方面。
+
+针对识别出的各类风险，制定了相应的风险应对策略和措施，包括风险规避、风险转移、风险减轻、风险接受等策略。
+
+结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目风险管理提供指导。""",
+
+        '效益': f"""本节对项目的效益进行分析。效益分析包括经济效益、社会效益、环境效益等多个维度。
+
+通过定量和定性相结合的方法，对项目的投入产出比、投资回收期等经济指标进行测算，同时对项目的社会效益和环境效益进行综合评价。
+
+结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目决策提供效益参考。""",
+
+        '结论': f"""本节对可行性研究报告的主要结论进行总结。结论包括项目建设的必要性、技术可行性、经济合理性、风险可控性等关键判断。
+
+综合各方面分析结果，本项目具备建设的必要性和可行性，建议尽快启动项目实施。
+
+结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目决策提供明确的结论建议。""",
+
+        '建议': f"""本节对项目实施提出相关建议。建议内容包括组织保障建议、资金保障建议、技术保障建议、进度控制建议等。
+
+通过提出针对性、可操作性的建议，为项目顺利实施提供保障措施。建议充分考虑了项目的实际情况和可能面临的困难。
+
+结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述，为项目实施提供参考建议。"""
+    }
+
+    # 匹配最接近的内容模板
+    selected_content = None
+    best_match_score = 0
+
+    for keyword, content in content_templates.items():
+        if keyword in section_title:
+            score = len(keyword)
+            if section_title.startswith(keyword):
+                score += 5
+            if score > best_match_score:
+                best_match_score = score
+                selected_content = content
+
+    if selected_content:
+        return selected_content
+
+    # 默认内容
+    return f"""{section_title}的具体内容。本项目按照相关规范和要求进行编制，确保符合可行性研究报告的标准。
+
+结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述。在编制过程中，充分考虑了项目的特点、建设条件、技术要求等因素，确保报告内容的科学性、合理性和可操作性。"""
+
+
+def generate_chapter_content(doc, chapter_node, requirement_content, template_content,
                               user_prompt, api_key, model, styles, depth=0):
-    """递归生成章节内容"""
-    
+    """递归生成章节内容（使用本地生成方式）"""
+
     # 生成子章节内容
     if chapter_node.get('children'):
         for child in chapter_node['children']:
             # 添加子章节标题
             level = min(child.get('level', 2), 4)  # 最多支持 4 级标题
             add_heading(doc, f"{child['number']} {child['title']}", level=level, styles=styles)
-            
+
             # 如果有更深层级的子节点，递归处理
             if child.get('children'):
                 generate_chapter_content(doc, child, requirement_content, template_content,
                                           user_prompt, api_key, model, styles, depth + 1)
             else:
-                # 叶子节点，生成内容
-                if api_key:
-                    ai_content = generate_content_with_ai(
-                        requirement_content,
-                        template_content,
-                        user_prompt,
-                        child['title'],
-                        api_key,
-                        model
-                    )
-                    cleaned_paragraphs = clean_ai_content(ai_content, child['title'])
-                    for para_text in cleaned_paragraphs:
-                        if para_text.strip():
-                            add_normal_paragraph(doc, para_text.strip(), styles=styles)
-                else:
-                    default_content = f"""{child['title']}的具体内容。本项目按照相关规范和要求进行编制，确保符合可行性研究报告的标准。
-
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述。"""
-                    for para_text in default_content.split('\n'):
-                        if para_text.strip():
-                            add_normal_paragraph(doc, para_text.strip(), styles=styles)
+                # 叶子节点，使用本地方式生成内容
+                content = generate_local_content(child['title'], requirement_content, template_content, user_prompt)
+                for para_text in content.split('\n'):
+                    if para_text.strip():
+                        add_normal_paragraph(doc, para_text.strip(), styles=styles)
 
 
 def generate_chapter(doc, chapter_title, sections, requirement_content, template_content,
                      user_prompt, api_key, model, section_title_prefix=''):
-    """生成单个章节的内容"""
+    """生成单个章节的内容（使用本地生成方式）"""
     add_heading(doc, chapter_title, level=1)
-    
+
     for section_title in sections:
         add_heading(doc, section_title, level=2)
-        
-        if api_key:
-            ai_content = generate_content_with_ai(
-                requirement_content,
-                template_content,
-                user_prompt,
-                section_title,
-                api_key,
-                model
-            )
-            cleaned_paragraphs = clean_ai_content(ai_content, section_title)
-            for para_text in cleaned_paragraphs:
-                if para_text.strip():
-                    add_normal_paragraph(doc, para_text.strip())
-        else:
-            default_content = f"""{section_title}的具体内容。本项目按照相关规范和要求进行编制，确保符合可行性研究报告的标准。
 
-结合需求文档中的具体要求，本节内容应根据项目实际情况进行详细阐述。包括但不限于项目背景、实施必要性、技术方案、投资估算等方面的内容。
+        # 使用本地方式生成内容
+        content = generate_local_content(section_title, requirement_content, template_content, user_prompt)
+        for para_text in content.split('\n'):
+            if para_text.strip():
+                add_normal_paragraph(doc, para_text.strip())
 
-在编制过程中，充分考虑了项目的特点、建设条件、技术要求等因素，确保报告内容的科学性、合理性和可操作性。"""
-            for para_text in default_content.split('\n'):
-                if para_text.strip():
-                    add_normal_paragraph(doc, para_text.strip())
-    
     doc.add_page_break()
     return doc
 
