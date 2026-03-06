@@ -1639,11 +1639,15 @@ def get_chapter_content_template(section_title, requirement_content=''):
 def generate_chapter_content(doc, chapter_node, requirement_content, template_content,
                               user_prompt, api_key, model, styles, depth=0):
     """
-    递归生成章节内容（使用本地生成方式）
-    严格按照目录树结构生成标题和内容 - 修复空列表和 null 的处理
+    递归生成章节内容
+    严格按照目录树结构生成标题和内容
+    
+    优化：支持 AI 生成
+    - 有 API Key：调用 AI 生成内容
+    - 无 API Key：使用模板内容
     """
     children = chapter_node.get('children')
-    
+
     # 判断是否有子节点
     if children is not None and len(children) > 0:
         # 有子节点，递归处理
@@ -1657,7 +1661,29 @@ def generate_chapter_content(doc, chapter_node, requirement_content, template_co
                                       user_prompt, api_key, model, styles, depth + 1)
     else:
         # 叶子节点，生成内容
-        content = get_chapter_content_template(chapter_node['title'])
+        section_title = chapter_node['title']
+        
+        # 判断是否使用 AI 生成
+        if api_key and api_key.strip():
+            # 调用 AI 生成
+            from ai_engine import generate_section_content_with_ai
+            content = generate_section_content_with_ai(
+                section_title=section_title,
+                requirement_text=requirement_content,
+                template_text=template_content,
+                user_instruction=user_prompt,
+                api_key=api_key,
+                model=model
+            )
+            # 如果 AI 生成失败，降级使用模板
+            if content.startswith('[') and 'API' in content:
+                print(f'[WARNING] AI 生成失败，使用模板：{section_title}')
+                content = get_chapter_content_template(section_title)
+        else:
+            # 使用模板内容
+            content = get_chapter_content_template(section_title)
+        
+        # 添加正文内容
         for para_text in content.split('\n'):
             if para_text.strip():
                 add_normal_paragraph(doc, para_text.strip(), styles=styles)
