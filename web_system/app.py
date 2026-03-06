@@ -450,22 +450,23 @@ def scan_template_styles(file_path):
         doc = Document(file_path)
         chapters = []
         
-        # 常见的一级章节关键词（用于识别没有编号的章节标题）
-        # 这些关键词通常出现在章节标题的开头
-        chapter_start_keywords = [
-            '第', '一、', '1', '第一章', '第二章', '第三章', '第四章', '第五章',
+        # 一级章节标题关键词（通常作为独立章节出现）
+        level1_keywords = [
             '项目概况', '项目总论', '项目建设单位', '项目建设的必要性', '需求分析',
             '项目建设方案', '总体思路', '总体框架', '技术路线', '投资估算',
-            '资金筹措', '效益分析', '风险分析', '结论与建议', '结论', '建议',
+            '资金筹措', '效益分析', '风险分析', '结论', '建议', '结论和建议',
             '市场分析', '建设方案', '实施计划', '环保', '节能', '招标', '安全',
-            '组织机构', '人员配置', '进度安排', '财务评价', '附录', '附件'
+            '组织机构', '人员', '进度', '财务', '评价', '附录', '附件',
+            '项目编审人员名单', '目录', '项目建设单位概况', '项目实施机构',
+            '与数字化改革总体方案的关系', '应用系统设计', '国产化改造', '系统安全'
         ]
         
-        # 二级章节关键词
-        section_keywords = [
+        # 二级章节标题关键词（通常作为子章节出现）
+        level2_keywords = [
             '概况', '必要性', '分析', '方案', '思路', '框架', '路线', '目标',
             '内容', '规模', '周期', '估算', '筹措', '效益', '风险', '对策',
-            '背景', '现状', '需求', '设计', '建设', '管理', '运维', '培训'
+            '背景', '现状', '需求', '设计', '建设', '管理', '运维', '培训',
+            '依据', '职能', '职责', '差距', '问题', '趋势', '评估'
         ]
         
         for para in doc.paragraphs:
@@ -482,11 +483,27 @@ def scan_template_styles(file_path):
                 continue
             
             # 跳过包含句号的文本（通常是正文）
-            if '。' in text and len(text) > 30:
+            if '。' in text:
                 continue
             
             # 跳过包含冒号的文本（通常是列表项或说明）
-            if ':' in text or ':' in text:
+            if ':' in text:
+                continue
+            
+            # 跳过以括号开头的文本（通常是列表项）
+            if text.startswith('(') or text.startswith('（'):
+                continue
+            
+            # 跳过以数字 + 顿号开头的文本（如"1、"）
+            if re.match(r'^\d+[,、]', text):
+                continue
+            
+            # 跳过包含"详见"的文本（通常是引用）
+            if '详见' in text:
+                continue
+            
+            # 跳过包含"预算"、"费用"、"表"的短文本（通常是表格标题）
+            if len(text) < 15 and any(kw in text for kw in ['预算', '费用', '表', '清单']):
                 continue
             
             # 尝试匹配带编号的章节标题（支持无限层级）
@@ -497,16 +514,16 @@ def scan_template_styles(file_path):
                 title = numbered_match.group(2)
                 level = number.count('.') + 1
                 
-                # 排除类似"1、"这样的列表项（后面跟顿号）
+                # 排除类似"1、"这样的列表项
                 if title.startswith('、') or title.startswith('，') or title.startswith(';'):
                     continue
                 
-                # 排除过长的文本（不是标题）
+                # 排除过长的文本
                 if len(title) > 80:
                     continue
                 
                 # 排除 GB/T 等标准编号
-                if title.startswith('《') or 'GB/T' in title:
+                if title.startswith('《') or 'GB/T' in title or 'DB33' in title:
                     continue
                 
                 style_info = extract_paragraph_style(para)
@@ -525,17 +542,20 @@ def scan_template_styles(file_path):
                 is_chapter = False
                 level = 1
                 
-                # 检查是否以章节关键词开头
-                for keyword in chapter_start_keywords:
-                    if text.startswith(keyword) and len(text) < 40:
-                        is_chapter = True
-                        break
-                
-                # 或者文本较短且包含章节关键词
-                if not is_chapter and len(text) < 25:
-                    for keyword in chapter_start_keywords:
-                        if keyword in text:
+                # 检查是否包含一级章节关键词（且文本较短）
+                if len(text) < 35:
+                    for keyword in level1_keywords:
+                        if text == keyword or text.startswith(keyword) or keyword in text:
                             is_chapter = True
+                            level = 1
+                            break
+                
+                # 如果不是章节，继续检查是否是二级章节
+                if not is_chapter and len(text) < 25:
+                    for keyword in level2_keywords:
+                        if keyword in text and len(text) < 20:
+                            is_chapter = True
+                            level = 2
                             break
                 
                 if is_chapter:
