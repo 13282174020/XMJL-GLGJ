@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务监控 - AI 文档生成系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 20px 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* 设置面板 */
+        .settings-panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .settings-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+
+        .settings-row label {
+            font-weight: bold;
+            color: #555;
+            min-width: 100px;
+        }
+
+        .settings-row input[type="range"] {
+            flex: 1;
+            max-width: 300px;
+        }
+
+        .settings-row span {
+            color: #667eea;
+            font-weight: bold;
+            min-width: 60px;
+        }
+
+        /* 进度面板 */
+        .progress-panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 30px;
+            background: #e9ecef;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .task-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .info-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .info-card label {
+            display: block;
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+
+        .info-card .value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        /* 章节列表 */
+        .chapters-panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .chapters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .chapter-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .chapter-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .chapter-card.pending {
+            border-color: #6c757d;
+        }
+
+        .chapter-card.generating {
+            border-color: #ffc107;
+            background: #fff8e1;
+        }
+
+        .chapter-card.completed {
+            border-color: #28a745;
+            background: #e8f5e9;
+        }
+
+        .chapter-card.failed {
+            border-color: #dc3545;
+            background: #ffebee;
+        }
+
+        .chapter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .chapter-title {
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .chapter-status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-pending {
+            background: #6c757d;
+            color: white;
+        }
+
+        .status-generating {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .status-completed {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-failed {
+            background: #dc3545;
+            color: white;
+        }
+
+        .chapter-content {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 10px;
+            max-height: 100px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        .chapter-actions {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .chapter-actions .btn {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+
+        /* 内容预览面板 */
+        .preview-panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .preview-content {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: 'SimSun', serif;
+            font-size: 14px;
+            line-height: 1.8;
+        }
+
+        /* 重新生成对话框 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            color: #333;
+            font-size: 18px;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .modal-body textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        /* 状态徽章 */
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .badge-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .badge-warning {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .badge-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .badge-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 10px;
+        }
+
+        /* 加载动画 */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 通知 */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 2000;
+            animation: slideIn 0.3s ease;
+        }
+
+        .notification.success {
+            background: #28a745;
+        }
+
+        .notification.error {
+            background: #dc3545;
+        }
+
+        .notification.info {
+            background: #17a2b8;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <div class="header">
+            <h1>📋 任务监控中心</h1>
+            <div class="header-actions">
+                <button class="btn btn-primary" onclick="location.href='/'">返回首页</button>
+                <button class="btn btn-secondary" onclick="refreshTask()">刷新状态</button>
+            </div>
+        </div>
+
+        <!-- 设置面板 -->
+        <div class="settings-panel">
+            <div class="settings-row">
+                <label>轮询频率：</label>
+                <input type="range" id="pollInterval" min="1000" max="10000" step="1000" value="3000">
+                <span id="pollIntervalValue">3 秒</span>
+            </div>
+            <div class="settings-row">
+                <label>任务 ID：</label>
+                <input type="text" id="taskIdInput" placeholder="输入任务 ID" style="flex: 1; max-width: 400px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <button class="btn btn-primary" onclick="loadTask()">加载任务</button>
+            </div>
+        </div>
+
+        <!-- 进度面板 -->
+        <div class="progress-panel" id="progressPanel" style="display: none;">
+            <div class="progress-header">
+                <h2>生成进度</h2>
+                <div>
+                    <button class="btn btn-warning" id="pauseBtn" onclick="togglePause()">⏸️ 暂停</button>
+                    <button class="btn btn-danger" onclick="cancelTask()">❌ 取消</button>
+                    <button class="btn btn-success" onclick="downloadPartial()">📥 下载临时文档</button>
+                </div>
+            </div>
+            
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar" style="width: 0%;">0%</div>
+            </div>
+
+            <div class="task-info">
+                <div class="info-card">
+                    <label>任务状态</label>
+                    <div class="value" id="taskStatus">-</div>
+                </div>
+                <div class="info-card">
+                    <label>当前章节</label>
+                    <div class="value" id="currentChapter">-</div>
+                </div>
+                <div class="info-card">
+                    <label>已完成</label>
+                    <div class="value" id="completedChapters">0/0</div>
+                </div>
+                <div class="info-card">
+                    <label>失败章节</label>
+                    <div class="value" id="failedChapters">0</div>
+                </div>
+                <div class="info-card">
+                    <label>开始时间</label>
+                    <div class="value" id="startTime">-</div>
+                </div>
+                <div class="info-card">
+                    <label>更新时间</label>
+                    <div class="value" id="updateTime">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 章节列表 -->
+        <div class="chapters-panel" id="chaptersPanel" style="display: none;">
+            <h2>📑 章节列表</h2>
+            <div class="chapters-grid" id="chaptersGrid">
+                <!-- 章节卡片将通过 JS 动态生成 -->
+            </div>
+        </div>
+
+        <!-- 内容预览 -->
+        <div class="preview-panel" id="previewPanel" style="display: none;">
+            <h2>📖 内容预览</h2>
+            <div class="preview-content" id="previewContent">
+                选择一个章节查看内容预览
+            </div>
+        </div>
+
+        <!-- 空状态 -->
+        <div class="empty-state" id="emptyState">
+            <h3>📭 暂无任务</h3>
+            <p>请输入任务 ID 或从首页创建新任务</p>
+        </div>
+
+        <!-- 重新生成对话框 -->
+        <div class="modal" id="regenerateModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>🔄 重新生成章节</h3>
+                    <button class="btn" onclick="closeModal()" style="background: transparent; font-size: 20px;">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="margin-bottom: 10px; color: #666;">
+                        <strong>当前章节：</strong><span id="regenerateChapterTitle"></span>
+                    </p>
+                    <p style="margin-bottom: 10px; color: #666;">
+                        <strong>已重新生成：</strong><span id="regenerateCount">0</span>/2 次
+                    </p>
+                    <p style="margin-bottom: 10px; color: #666;">
+                        请描述更细致的需求，AI 将根据您的要求重新生成：
+                    </p>
+                    <textarea id="userInstruction" placeholder="例如：请结合回迁小区的特点，重点说明安防建设的必要性，提到监控设备老化、电瓶车盗窃等具体问题..."></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+                    <button class="btn btn-primary" onclick="confirmRegenerate()">确认重新生成</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局状态
+        let currentTaskId = null;
+        let pollInterval = 3000;
+        let pollTimer = null;
+        let isPaused = false;
+        let currentRegenerateChapter = null;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 从 URL 获取任务 ID
+            const urlParams = new URLSearchParams(window.location.search);
+            const taskId = urlParams.get('task_id');
+            if (taskId) {
+                document.getElementById('taskIdInput').value = taskId;
+                loadTask();
+            }
+
+            // 轮询频率设置
+            const pollSlider = document.getElementById('pollInterval');
+            const pollValue = document.getElementById('pollIntervalValue');
+            
+            pollSlider.addEventListener('input', function() {
+                pollInterval = parseInt(this.value);
+                pollValue.textContent = (pollInterval / 1000) + '秒';
+                localStorage.setItem('pollInterval', pollInterval);
+                
+                // 重启轮询
+                if (currentTaskId && !isPaused) {
+                    stopPolling();
+                    startPolling();
+                }
+            });
+
+            // 加载保存的轮询频率
+            const savedInterval = localStorage.getItem('pollInterval');
+            if (savedInterval) {
+                pollInterval = parseInt(savedInterval);
+                pollSlider.value = pollInterval;
+                pollValue.textContent = (pollInterval / 1000) + '秒';
+            }
+        });
+
+        // 加载任务
+        function loadTask() {
+            const taskId = document.getElementById('taskIdInput').value.trim();
+            if (!taskId) {
+                showNotification('请输入任务 ID', 'error');
+                return;
+            }
+
+            currentTaskId = taskId;
+            stopPolling();
+            startPolling();
+        }
+
+        // 刷新任务
+        function refreshTask() {
+            if (currentTaskId) {
+                fetchTaskStatus();
+            }
+        }
+
+        // 开始轮询
+        function startPolling() {
+            if (!currentTaskId) return;
+
+            fetchTaskStatus();
+            pollTimer = setInterval(fetchTaskStatus, pollInterval);
+            showNotification('开始轮询任务状态', 'info');
+        }
+
+        // 停止轮询
+        function stopPolling() {
+            if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+            }
+        }
+
+        // 获取任务状态
+        async function fetchTaskStatus() {
+            if (!currentTaskId || isPaused) return;
+
+            try {
+                const response = await fetch(`/api/v2/task/${currentTaskId}/status`);
+                const data = await response.json();
+
+                if (data.success) {
+                    updateUI(data.task);
+                } else {
+                    showNotification('获取任务状态失败：' + data.message, 'error');
+                }
+            } catch (error) {
+                console.error('获取任务状态失败:', error);
+                showNotification('网络错误，请检查服务是否运行', 'error');
+            }
+        }
+
+        // 更新 UI
+        function updateUI(task) {
+            // 显示面板
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('progressPanel').style.display = 'block';
+            document.getElementById('chaptersPanel').style.display = 'block';
+            document.getElementById('previewPanel').style.display = 'block';
+
+            // 更新进度条
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = task.progress + '%';
+            progressBar.textContent = task.progress + '%';
+
+            // 更新任务信息
+            document.getElementById('taskStatus').textContent = get_status_text(task.status);
+            document.getElementById('currentChapter').textContent = task.current_chapter || '-';
+            document.getElementById('completedChapters').textContent = 
+                `${task.completed_chapters}/${task.total_chapters}`;
+            document.getElementById('failedChapters').textContent = 
+                (task.failed_chapters || []).length;
+            document.getElementById('startTime').textContent = task.created_at || '-';
+            document.getElementById('updateTime').textContent = task.updated_at || '-';
+
+            // 更新暂停按钮
+            const pauseBtn = document.getElementById('pauseBtn');
+            if (task.status === 'paused') {
+                pauseBtn.textContent = '▶️ 继续';
+                pauseBtn.className = 'btn btn-success';
+            } else {
+                pauseBtn.textContent = '⏸️ 暂停';
+                pauseBtn.className = 'btn btn-warning';
+            }
+
+            // 更新章节列表
+            updateChaptersGrid(task.chapters);
+
+            // 如果任务完成，停止轮询
+            if (['completed', 'partially_completed', 'failed', 'cancelled'].includes(task.status)) {
+                stopPolling();
+                showNotification('任务已完成', 'success');
+            }
+        }
+
+        // 更新章节网格
+        function updateChaptersGrid(chapters) {
+            const grid = document.getElementById('chaptersGrid');
+            grid.innerHTML = '';
+
+            chapters.forEach(chapter => {
+                const card = document.createElement('div');
+                card.className = `chapter-card ${chapter.status}`;
+                card.onclick = () => showPreview(chapter);
+
+                card.innerHTML = `
+                    <div class="chapter-header">
+                        <span class="chapter-title">${chapter.title}</span>
+                        <span class="chapter-status status-${chapter.status}">
+                            ${get_status_text(chapter.status)}
+                        </span>
+                    </div>
+                    ${chapter.status === 'completed' ? `
+                        <div class="chapter-content" style="display: none;">
+                            ${chapter.content || ''}
+                        </div>
+                    ` : ''}
+                    ${chapter.status === 'failed' ? `
+                        <div style="color: #dc3545; font-size: 12px; margin-bottom: 10px;">
+                            ⚠️ ${chapter.error_message || '生成失败'}
+                        </div>
+                    ` : ''}
+                    <div class="chapter-actions">
+                        ${chapter.status === 'completed' ? `
+                            <button class="btn btn-secondary" onclick="event.stopPropagation(); showRegenerateModal(${chapter.index}, '${chapter.title}', ${chapter.regenerated_count || 0})">
+                                🔄 重新生成
+                            </button>
+                        ` : ''}
+                        ${chapter.status === 'failed' ? `
+                            <button class="btn btn-primary" onclick="event.stopPropagation(); showRegenerateModal(${chapter.index}, '${chapter.title}', ${chapter.regenerated_count || 0})">
+                                🔁 重试
+                            </button>
+                            <button class="btn btn-secondary" onclick="event.stopPropagation(); skipChapter(${chapter.index})">
+                                ⏭️ 跳过
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+
+                grid.appendChild(card);
+            });
+        }
+
+        // 显示预览
+        function showPreview(chapter) {
+            const previewPanel = document.getElementById('previewPanel');
+            const previewContent = document.getElementById('previewContent');
+
+            previewPanel.style.display = 'block';
+            previewPanel.scrollIntoView({ behavior: 'smooth' });
+
+            if (chapter.status === 'completed' && chapter.content) {
+                previewContent.textContent = chapter.content;
+            } else {
+                previewContent.textContent = '该章节暂无内容预览';
+            }
+        }
+
+        // 显示重新生成对话框
+        function showRegenerateModal(index, title, count) {
+            currentRegenerateChapter = index;
+            document.getElementById('regenerateChapterTitle').textContent = title;
+            document.getElementById('regenerateCount').textContent = count;
+            document.getElementById('userInstruction').value = '';
+            document.getElementById('regenerateModal').classList.add('show');
+        }
+
+        // 关闭对话框
+        function closeModal() {
+            document.getElementById('regenerateModal').classList.remove('show');
+            currentRegenerateChapter = null;
+        }
+
+        // 确认重新生成
+        async function confirmRegenerate() {
+            const userInstruction = document.getElementById('userInstruction').value.trim();
+            
+            if (!userInstruction) {
+                showNotification('请输入补充需求', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/v2/task/${currentTaskId}/chapters/${currentRegenerateChapter}/regenerate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_instruction: userInstruction
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification('已提交重新生成请求', 'success');
+                    closeModal();
+                    // 立即刷新状态
+                    setTimeout(fetchTaskStatus, 1000);
+                } else {
+                    showNotification('重新生成失败：' + data.message, 'error');
+                }
+            } catch (error) {
+                console.error('重新生成失败:', error);
+                showNotification('网络错误', 'error');
+            }
+        }
+
+        // 跳过章节
+        async function skipChapter(index) {
+            if (!confirm('确定要跳过这个章节吗？')) return;
+
+            try {
+                // TODO: 实现跳过章节 API
+                showNotification('跳过功能开发中', 'info');
+            } catch (error) {
+                showNotification('操作失败', 'error');
+            }
+        }
+
+        // 暂停/继续
+        async function togglePause() {
+            if (!currentTaskId) return;
+
+            isPaused = !isPaused;
+
+            try {
+                const endpoint = isPaused ? 'pause' : 'continue';
+                const response = await fetch(`/api/v2/task/${currentTaskId}/${endpoint}`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(isPaused ? '任务已暂停' : '任务已继续', 'success');
+                    if (!isPaused) {
+                        startPolling();
+                    }
+                } else {
+                    showNotification('操作失败：' + data.message, 'error');
+                    isPaused = !isPaused; // 恢复状态
+                }
+            } catch (error) {
+                console.error('操作失败:', error);
+                showNotification('网络错误', 'error');
+                isPaused = !isPaused; // 恢复状态
+            }
+        }
+
+        // 取消任务
+        async function cancelTask() {
+            if (!confirm('确定要取消这个任务吗？')) return;
+
+            try {
+                const response = await fetch(`/api/v2/task/${currentTaskId}/cancel`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification('任务已取消', 'success');
+                    stopPolling();
+                } else {
+                    showNotification('取消失败：' + data.message, 'error');
+                }
+            } catch (error) {
+                showNotification('网络错误', 'error');
+            }
+        }
+
+        // 下载临时文档
+        function downloadPartial() {
+            if (!currentTaskId) return;
+            window.open(`/api/v2/task/${currentTaskId}/download-partial`, '_blank');
+        }
+
+        // 获取状态文本
+        function get_status_text(status) {
+            const statusMap = {
+                'pending': '等待中',
+                'generating': '生成中',
+                'paused': '已暂停',
+                'completed': '已完成',
+                'partially_completed': '部分完成',
+                'failed': '失败',
+                'cancelled': '已取消'
+            };
+            return statusMap[status] || status;
+        }
+
+        // 显示通知
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

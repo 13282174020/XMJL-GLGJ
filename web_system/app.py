@@ -1600,7 +1600,7 @@ def get_chapter_content_template(section_title, requirement_content=''):
     """
     # 信息型字段 - 简��、具体
     info_templates = {
-        '项目名称': '根据������������文档提取的项目名称',
+        '项目名称': '根据��������������文档提取的项目名称',
         '项目建设单位': '根据需求文档提取���建设单位名�������������',
         '负责人': 'XXX',
         '联系方式': '电话：XXX-XXXXXXX',
@@ -2507,6 +2507,12 @@ def process_document_async_v3(task_id, template_type, requirement_content, templ
 
 
 # ==================== Flask 路由 ====================
+
+@app.route('/task-monitor')
+def task_monitor():
+    """任务监控页面"""
+    return render_template('task_monitor.html')
+
 
 @app.route('/')
 def index():

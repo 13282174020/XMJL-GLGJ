@@ -471,6 +471,7 @@
                 <span class="badge">AI 增强版</span>
             </h1>
             <div class="header-actions">
+                <a href="/task-monitor" style="color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 6px; font-size: 13px;">📋 任务监控</a>
                 <a href="/task-center" style="color: white; text-decoration: none; background: rgba(255,255,255,0.2); padding: 8px 15px; border-radius: 6px; font-size: 13px;">📊 任务管理中心</a>
                 <button onclick="showConfigModal()">📑 目录与样式</button>
                 <button onclick="showHelpModal()">❓ 帮助</button>
@@ -539,22 +540,16 @@
                     <div class="form-group">
                         <label>🤖 AI 模型 <span class="hint">（选择生成模型）</span></label>
                         <select id="modelSelect" name="model">
-                            <option value="qwen-max">通义千问-Max（最强）</option>
-                            <option value="qwen-plus">通义千问-Plus（平衡）</option>
-                            <option value="qwen-turbo">通义千问-Turbo（快速）</option>
-                            <option value="glm-4">GLM-4（智谱 AI）</option>
-                            <option value="glm-3-turbo">GLM-3-Turbo（智谱 AI）</option>
-                            <option value="kimi-latest">Kimi（月之暗面）</option>
-                            <option value="mini-max">MiniMax</option>
+                            <option value="">加载中...</option>
                         </select>
+                        <div style="margin-top: 8px;">
+                            <a href="/model-config" target="_blank" style="font-size: 12px; color: #667eea;">⚙️ 管理模型配置</a>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>💡 模型说明</label>
-                        <div style="padding: 10px; background: #f8f9fa; border-radius: 6px; font-size: 13px; color: #666;">
-                            <div><strong>通义千问系列</strong>：阿里云百炼平台，适合长文本生成</div>
-                            <div><strong>GLM 系列</strong>：智谱 AI，逻辑推理能力强</div>
-                            <div><strong>Kimi</strong>：月之暗面，擅长长上下文理解</div>
-                            <div><strong>MiniMax</strong>：通用大模型，性价比高</div>
+                        <div id="modelDescription" style="padding: 10px; background: #f8f9fa; border-radius: 6px; font-size: 13px; color: #666;">
+                            请选择模型查看说明
                         </div>
                     </div>
                 </div>
@@ -731,14 +726,77 @@
         
         setupFileUpload('templateFile', 'templateUpload', 'templateFilename');
         setupFileUpload('requirementFile', 'requirementUpload', 'requirementFilename');
+
+        // 加载模型列表
+        async function loadModels() {
+            try {
+                const response = await fetch('/api/models/enabled');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const select = document.getElementById('modelSelect');
+                    select.innerHTML = '';
+                    
+                    data.models.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.id;
+                        option.textContent = model.name;
+                        select.appendChild(option);
+                    });
+                    
+                    // 更新模型说明
+                    updateModelDescription();
+                } else {
+                    console.error('加载模型失败:', data.error);
+                }
+            } catch (error) {
+                console.error('加载模型失败:', error);
+            }
+        }
         
+        // 更新模型说明
+        function updateModelDescription() {
+            const select = document.getElementById('modelSelect');
+            const descriptionDiv = document.getElementById('modelDescription');
+            
+            select.addEventListener('change', async function() {
+                const modelId = this.value;
+                if (!modelId) return;
+                
+                try {
+                    const response = await fetch(`/api/models/${modelId}`);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        const model = data.model;
+                        descriptionDiv.innerHTML = `
+                            <div><strong>${model.name}</strong></div>
+                            <div style="margin-top: 5px;">${model.description || '暂无说明'}</div>
+                            <div style="margin-top: 5px; color: ${model.has_api_key ? '#27ae60' : '#e74c3c'};">
+                                ${model.has_api_key ? '✅ API Key 已配置' : '⚠️ API Key 未配置'}
+                            </div>
+                        `;
+                    }
+                } catch (error) {
+                    console.error('获取模型详情失败:', error);
+                }
+            });
+            
+            // 触发一次 change 事件
+            if (select.value) {
+                select.dispatchEvent(new Event('change'));
+            }
+        }
+        
+        // 页面加载时加载模型
+        loadModels();
+
         // 验证 API Key
         async function validateApiKey() {
-            const apiKey = document.getElementById('apiKey').value.trim();
             const model = document.getElementById('modelSelect').value;
-            
-            if (!apiKey) {
-                alert('请输入 API Key');
+
+            if (!model) {
+                alert('请先选择模型');
                 return;
             }
 
@@ -747,14 +805,26 @@
             btn.textContent = '验证中...';
 
             try {
-                const response = await fetch('/api/validate-key', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({api_key: apiKey, model: model})
+                // 先更新 API Key
+                const apiKey = document.getElementById('apiKey').value.trim();
+                if (apiKey) {
+                    await fetch(`/api/models/${model}/apikey`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({api_key: apiKey})
+                    });
+                }
+                
+                // 测试模型连接
+                const response = await fetch(`/api/models/${model}/test`, {
+                    method: 'POST'
                 });
 
                 const data = await response.json();
-                alert(data.message);
+                alert(data.success ? `✅ ${data.message}\n响应: ${data.response}` : `❌ ${data.error}`);
+                
+                // 刷新模型说明
+                document.getElementById('modelSelect').dispatchEvent(new Event('change'));
             } catch (error) {
                 alert('验证失败：' + error.message);
             } finally {
@@ -828,7 +898,14 @@
             progressBar.style.width = '0%';
 
             const formData = new FormData(this);
-            const useAI = formData.get('api_key') ? true : false;
+            const modelId = formData.get('model');
+            
+            // 检查是否选择了模型
+            if (!modelId) {
+                alert('请先选择 AI 模型');
+                submitBtn.disabled = false;
+                return;
+            }
 
             // 显示加载状态
             submitBtn.disabled = true;

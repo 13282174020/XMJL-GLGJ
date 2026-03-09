@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模型配置管理 - AI 文档生成系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 25px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .header-actions a {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        
+        .header-actions a:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .tips {
+            background: #fff8e6;
+            border-left: 4px solid #f39c12;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .tips h4 {
+            color: #d68910;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .tips ul {
+            margin-left: 20px;
+            color: #666;
+            font-size: 13px;
+        }
+        
+        .model-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        
+        .model-card {
+            border: 2px solid #eee;
+            border-radius: 10px;
+            padding: 20px;
+            transition: all 0.3s;
+            background: white;
+        }
+        
+        .model-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.2);
+        }
+        
+        .model-card.disabled {
+            opacity: 0.6;
+            background: #f8f9fa;
+        }
+        
+        .model-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .model-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .model-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .status-badge.enabled {
+            background: #e8f8f0;
+            color: #27ae60;
+        }
+        
+        .status-badge.disabled {
+            background: #fef0f0;
+            color: #e74c3c;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            background: #ccc;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .toggle-switch.active {
+            background: #27ae60;
+        }
+        
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s;
+        }
+        
+        .toggle-switch.active::after {
+            left: 22px;
+        }
+        
+        .model-info {
+            margin-bottom: 15px;
+        }
+        
+        .model-info-item {
+            display: flex;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+        
+        .model-info-label {
+            color: #999;
+            width: 80px;
+            flex-shrink: 0;
+        }
+        
+        .model-info-value {
+            color: #333;
+        }
+        
+        .api-key-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        
+        .api-key-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .api-key-input input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: monospace;
+        }
+        
+        .api-key-input input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #666;
+        }
+        
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+        
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #219a52;
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .test-result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            display: none;
+        }
+        
+        .test-result.success {
+            display: block;
+            background: #e8f8f0;
+            color: #27ae60;
+            border: 1px solid #27ae60;
+        }
+        
+        .test-result.error {
+            display: block;
+            background: #fef0f0;
+            color: #e74c3c;
+            border: 1px solid #e74c3c;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .add-model-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            font-size: 30px;
+            cursor: pointer;
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .add-model-btn:hover {
+            transform: scale(1.1);
+        }
+        
+        /* 模态框 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal.show {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            padding: 30px;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .modal-header h2 {
+            font-size: 20px;
+            color: #333;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #999;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 13px;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                ⚙️ 模型配置管理
+            </h1>
+            <div class="header-actions">
+                <a href="/">🏠 返回首页</a>
+                <a href="/task-center">📋 任务中心</a>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="tips">
+                <h4>💡 使用说明</h4>
+                <ul>
+                    <li>点击开关启用/禁用模型，只有启用的模型才会在生成文档时显示</li>
+                    <li>输入 API Key 后点击"保存"按钮保存配置</li>
+                    <li>点击"测试"按钮验证 API Key 是否有效</li>
+                    <li>支持阿里云百炼、智谱 AI、Kimi、MiniMax 等主流模型</li>
+                </ul>
+            </div>
+            
+            <div class="model-grid" id="modelGrid">
+                <!-- 模型卡片将通过 JS 动态加载 -->
+                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #999;">
+                    <div class="loading"></div>
+                    <p>正在加载模型配置...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <button class="add-model-btn" onclick="showAddModal()" title="添加自定义模型">+</button>
+    
+    <!-- 添加模型模态框 -->
+    <div class="modal" id="addModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>添加自定义模型</h2>
+                <button class="modal-close" onclick="closeAddModal()">&times;</button>
+            </div>
+            <form id="addModelForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>模型 ID</label>
+                        <input type="text" name="id" placeholder="如：gpt-4" required>
+                    </div>
+                    <div class="form-group">
+                        <label>显示名称</label>
+                        <input type="text" name="name" placeholder="如：GPT-4" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>提供商</label>
+                    <select name="provider">
+                        <option value="openai">OpenAI</option>
+                        <option value="custom">自定义</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>模型名称</label>
+                    <input type="text" name="model" placeholder="如：gpt-4" required>
+                </div>
+                <div class="form-group">
+                    <label>API 基础 URL</label>
+                    <input type="text" name="base_url" placeholder="如：https://api.openai.com/v1/chat/completions" required>
+                </div>
+                <div class="form-group">
+                    <label>API Key</label>
+                    <input type="password" name="api_key" placeholder="输入 API Key">
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <textarea name="description" rows="2" placeholder="模型描述"></textarea>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" onclick="closeAddModal()">取消</button>
+                    <button type="submit" class="btn btn-primary">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        // 加载模型列表
+        async function loadModels() {
+            try {
+                const response = await fetch('/api/models');
+                const data = await response.json();
+                
+                if (data.success) {
+                    renderModels(data.models);
+                } else {
+                    showError('加载模型失败：' + data.error);
+                }
+            } catch (error) {
+                showError('加载模型失败：' + error.message);
+            }
+        }
+        
+        // 渲染模型卡片
+        function renderModels(models) {
+            const grid = document.getElementById('modelGrid');
+            grid.innerHTML = '';
+            
+            models.forEach(model => {
+                const card = document.createElement('div');
+                card.className = 'model-card' + (model.enabled ? '' : ' disabled');
+                card.innerHTML = `
+                    <div class="model-header">
+                        <div class="model-name">${model.name}</div>
+                        <div class="model-status">
+                            <span class="status-badge ${model.enabled ? 'enabled' : 'disabled'}">
+                                ${model.enabled ? '已启用' : '已禁用'}
+                            </span>
+                            <div class="toggle-switch ${model.enabled ? 'active' : ''}" 
+                                 onclick="toggleModel('${model.id}', ${!model.enabled})">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="model-info">
+                        <div class="model-info-item">
+                            <span class="model-info-label">提供商：</span>
+                            <span class="model-info-value">${model.provider}</span>
+                        </div>
+                        <div class="model-info-item">
+                            <span class="model-info-label">模型：</span>
+                            <span class="model-info-value">${model.model}</span>
+                        </div>
+                        <div class="model-info-item">
+                            <span class="model-info-label">描述：</span>
+                            <span class="model-info-value">${model.description || '暂无描述'}</span>
+                        </div>
+                    </div>
+                    <div class="api-key-section">
+                        <div class="api-key-input">
+                            <input type="password" 
+                                   id="apikey-${model.id}" 
+                                   placeholder="输入 API Key" 
+                                   value="${model.has_api_key ? '******' : ''}">
+                            <button class="btn btn-primary" onclick="saveApiKey('${model.id}')">保存</button>
+                            <button class="btn btn-success" onclick="testModel('${model.id}')">测试</button>
+                        </div>
+                        <div class="test-result" id="result-${model.id}"></div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+        
+        // 启用/禁用模型
+        async function toggleModel(modelId, enabled) {
+            try {
+                const response = await fetch(`/api/models/${modelId}/toggle`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({enabled})
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    loadModels();
+                } else {
+                    alert('操作失败：' + data.error);
+                }
+            } catch (error) {
+                alert('操作失败：' + error.message);
+            }
+        }
+        
+        // 保存 API Key
+        async function saveApiKey(modelId) {
+            const input = document.getElementById(`apikey-${modelId}`);
+            const apiKey = input.value.trim();
+            
+            if (!apiKey || apiKey === '******') {
+                alert('请输入 API Key');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/models/${modelId}/apikey`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({api_key: apiKey})
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    input.value = '******';
+                    showResult(modelId, 'API Key 保存成功', true);
+                } else {
+                    showResult(modelId, '保存失败：' + data.error, false);
+                }
+            } catch (error) {
+                showResult(modelId, '保存失败：' + error.message, false);
+            }
+        }
+        
+        // 测试模型
+        async function testModel(modelId) {
+            const resultDiv = document.getElementById(`result-${modelId}`);
+            resultDiv.className = 'test-result';
+            resultDiv.innerHTML = '<div class="loading"></div> 正在测试连接...';
+            resultDiv.style.display = 'block';
+            
+            try {
+                const response = await fetch(`/api/models/${modelId}/test`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    showResult(modelId, `✅ ${data.message}<br>响应: ${data.response}`, true);
+                } else {
+                    showResult(modelId, `❌ ${data.error}`, false);
+                }
+            } catch (error) {
+                showResult(modelId, `❌ 测试失败：${error.message}`, false);
+            }
+        }
+        
+        // 显示测试结果
+        function showResult(modelId, message, isSuccess) {
+            const resultDiv = document.getElementById(`result-${modelId}`);
+            resultDiv.className = 'test-result ' + (isSuccess ? 'success' : 'error');
+            resultDiv.innerHTML = message;
+        }
+        
+        // 显示添加模型模态框
+        function showAddModal() {
+            document.getElementById('addModal').classList.add('show');
+        }
+        
+        // 关闭添加模型模态框
+        function closeAddModal() {
+            document.getElementById('addModal').classList.remove('show');
+        }
+        
+        // 添加模型表单提交
+        document.getElementById('addModelForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const data = Object.fromEntries(formData);
+            
+            try {
+                const response = await fetch('/api/models/custom', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    closeAddModal();
+                    this.reset();
+                    loadModels();
+                } else {
+                    alert('添加失败：' + result.error);
+                }
+            } catch (error) {
+                alert('添加失败：' + error.message);
+            }
+        });
+        
+        // 显示错误
+        function showError(message) {
+            const grid = document.getElementById('modelGrid');
+            grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #e74c3c;">${message}</div>`;
+        }
+        
+        // 页面加载时加载模型
+        loadModels();
+        
+        // 点击模态框背景关闭
+        document.getElementById('addModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeAddModal();
+            }
+        });
+    </script>
+</body>
+</html>
