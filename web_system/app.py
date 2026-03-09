@@ -3584,6 +3584,105 @@ def toggle_model_v2(model_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/v2/models/<model_id>/test', methods=['POST'])
+def test_model_v2(model_id):
+    """测试模型配置"""
+    try:
+        from model_config_v2 import get_model_config_manager_v2
+        from ai_engine import call_ai_api
+        from model_config_v2 import ModelConfig
+        
+        manager = get_model_config_manager_v2()
+        model = manager.get_model(model_id)
+        
+        if not model:
+            return jsonify({'success': False, 'message': '模型不存在'}), 404
+        
+        # 检查 API Key
+        if not model.api_key:
+            return jsonify({
+                'success': False, 
+                'message': 'API Key 未配置，请先编辑模型配置 API Key'
+            }), 400
+        
+        # 检查启用状态
+        if not model.enabled:
+            return jsonify({
+                'success': False, 
+                'message': '模型未启用，请先启用模型'
+            }), 400
+        
+        # 构建测试 Prompt
+        test_prompt = "请用一句话介绍你自己。"
+        
+        # 创建临时模型配置用于测试
+        temp_config = ModelConfig(
+            id=model.id,
+            provider_id=model.provider_id,
+            name=model.name,
+            type=model.type,
+            model=model.model,
+            api_key=model.api_key,
+            base_url=model.base_url,
+            max_tokens=100,  # 测试时限制输出长度
+            temperature=model.temperature,
+            timeout=model.timeout,
+            enabled=model.enabled,
+            request_format=model.request_format,
+            response_path=model.response_path
+        )
+        
+        # 调用 AI API
+        import time
+        start_time = time.time()
+        result = call_ai_api(test_prompt, temp_config)
+        response_time = round((time.time() - start_time) * 1000)  # 毫秒
+        
+        # 检查结果
+        if result.startswith('[') and ('API' in result or 'Error' in result or 'error' in result):
+            return jsonify({
+                'success': False,
+                'message': f'测试失败：{result}',
+                'response_time': response_time
+            }), 400
+        
+        # 获取厂商信息
+        provider = manager.get_provider(model.provider_id)
+        
+        # 返回测试结果和模型信息
+        return jsonify({
+            'success': True,
+            'message': '模型测试成功',
+            'model_info': {
+                'id': model.id,
+                'name': model.name,
+                'provider_name': provider.name if provider else model.provider_id,
+                'provider_icon': provider.icon if provider else '🔧',
+                'model': model.model,
+                'type': model.type,
+                'max_tokens': model.max_tokens,
+                'temperature': model.temperature,
+                'base_url': model.base_url,
+                'enabled': model.enabled,
+                'has_api_key': bool(model.api_key)
+            },
+            'test_result': {
+                'response': result[:200],  # 返回前 200 字符
+                'response_length': len(result),
+                'response_time': response_time,
+                'tokens_used': '约 50-100'  # 估算
+            }
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'message': f'测试失败：{str(e)}',
+            'detail': traceback.format_exc()
+        }), 500
+
+
 @app.route('/api/v2/models/enabled', methods=['GET'])
 def get_enabled_models_v2():
     """获取启用的模型列表（用于首页选择）"""

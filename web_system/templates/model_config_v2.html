@@ -577,6 +577,85 @@
         </div>
     </div>
 
+    <!-- 测试结果模态框 -->
+    <div class="modal" id="testResultModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🧪 模型测试结果</h3>
+                <button class="btn" onclick="closeModal('testResultModal')" style="background: transparent; font-size: 20px;">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- 加载状态 -->
+                <div id="testLoading" style="text-align: center; padding: 40px;">
+                    <div class="loading" style="width: 40px; height: 40px; margin: 0 auto 20px;"></div>
+                    <p>正在测试模型连接...</p>
+                    <p style="color: #666; font-size: 13px;">这可能需要几秒钟时间</p>
+                </div>
+                
+                <!-- 测试结果 -->
+                <div id="testResult" style="display: none;">
+                    <!-- 模型信息 -->
+                    <div style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="margin-bottom: 10px; color: #1e3c72;">📊 模型信息</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px;">
+                            <div><strong>模型名称：</strong><span id="testModelName">-</span></div>
+                            <div><strong>厂商：</strong><span id="testProviderName">-</span></div>
+                            <div><strong>模型版本：</strong><span id="testModel">-</span></div>
+                            <div><strong>模型类型：</strong><span id="testModelType">-</span></div>
+                            <div><strong>最大 Tokens：</strong><span id="testMaxTokens">-</span></div>
+                            <div><strong>温度参数：</strong><span id="testTemperature">-</span></div>
+                            <div><strong>API 地址：</strong><span id="testBaseUrl" style="word-break: break-all;">-</span></div>
+                            <div><strong>启用状态：</strong><span id="testEnabled">-</span></div>
+                        </div>
+                    </div>
+                    
+                    <!-- 测试结果 -->
+                    <div style="background: #f0fff4; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="margin-bottom: 10px; color: #28a745;">✅ 测试结果</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 13px;">
+                            <div><strong>响应时间：</strong><span id="testResponseTime">-</span></div>
+                            <div><strong>返回长度：</strong><span id="testResponseLength">-</span></div>
+                            <div><strong>预估 Tokens：</strong><span id="testTokensUsed">-</span></div>
+                            <div><strong>API Key：</strong><span id="testApiKeyStatus">-</span></div>
+                        </div>
+                    </div>
+                    
+                    <!-- AI 回复预览 -->
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="margin-bottom: 10px; color: #333;">💬 AI 回复预览</h4>
+                        <div id="testResponse" style="white-space: pre-wrap; font-size: 13px; color: #555; max-height: 200px; overflow-y: auto;">-</div>
+                    </div>
+                    
+                    <!-- 测试问题 -->
+                    <div style="background: #fff8e6; padding: 10px; border-radius: 8px; font-size: 13px;">
+                        <strong>📝 测试问题：</strong>请用一句话介绍你自己。
+                    </div>
+                </div>
+                
+                <!-- 错误信息 -->
+                <div id="testError" style="display: none;">
+                    <div style="background: #fff5f5; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #dc3545;">
+                        <h4 style="margin-bottom: 10px; color: #dc3545;">❌ 测试失败</h4>
+                        <p id="testErrorMessage" style="color: #666; font-size: 14px; white-space: pre-wrap;">-</p>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; font-size: 13px;">
+                        <strong>💡 常见问题：</strong>
+                        <ul style="margin-top: 10px; margin-left: 20px;">
+                            <li>检查 API Key 是否正确配置</li>
+                            <li>检查模型是否已启用</li>
+                            <li>检查网络连接是否正常</li>
+                            <li>检查 API 地址是否正确</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('testResultModal')">关闭</button>
+                <button class="btn btn-primary" onclick="retryTest()" id="retryTestBtn" style="display: none;">🔄 重试</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // 全局状态
         let providers = [];
@@ -679,6 +758,7 @@
                     </div>
                     <div class="model-actions">
                         <button class="btn btn-primary" onclick="showEditModelModal('${model.id}')">✏️ 编辑</button>
+                        <button class="btn btn-success" onclick="testModel('${model.id}')">🧪 测试</button>
                         ${model.enabled ? 
                             '<button class="btn btn-secondary" onclick="toggleModel(\''+model.id+'\', false)">⏸️ 禁用</button>' : 
                             '<button class="btn btn-success" onclick="toggleModel(\''+model.id+'\', true)">▶️ 启用</button>'
@@ -918,6 +998,99 @@
             } catch (error) {
                 showNotification('网络错误', 'error');
             }
+        }
+
+        // 当前测试的模型 ID
+        let currentTestModelId = null;
+
+        // 测试模型
+        async function testModel(modelId) {
+            currentTestModelId = modelId;
+            
+            // 显示测试模态框
+            document.getElementById('testResultModal').classList.add('show');
+            document.getElementById('testLoading').style.display = 'block';
+            document.getElementById('testResult').style.display = 'none';
+            document.getElementById('testError').style.display = 'none';
+            document.getElementById('retryTestBtn').style.display = 'none';
+            
+            try {
+                const response = await fetch(`/api/v2/models/${modelId}/test`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+                
+                // 隐藏加载状态
+                document.getElementById('testLoading').style.display = 'none';
+                
+                if (data.success) {
+                    // 显示测试结果
+                    showTestResult(data);
+                } else {
+                    // 显示错误信息
+                    showTestError(data.message);
+                }
+            } catch (error) {
+                document.getElementById('testLoading').style.display = 'none';
+                showTestError('网络错误：' + error.message);
+            }
+        }
+
+        // 显示测试结果
+        function showTestResult(data) {
+            const modelInfo = data.model_info;
+            const testResult = data.test_result;
+            
+            // 模型信息
+            document.getElementById('testModelName').textContent = modelInfo.name;
+            document.getElementById('testProviderName').textContent = `${modelInfo.provider_icon} ${modelInfo.provider_name}`;
+            document.getElementById('testModel').textContent = modelInfo.model;
+            document.getElementById('testModelType').textContent = getModelTypeText(modelInfo.type);
+            document.getElementById('testMaxTokens').textContent = modelInfo.max_tokens;
+            document.getElementById('testTemperature').textContent = modelInfo.temperature;
+            document.getElementById('testBaseUrl').textContent = modelInfo.base_url;
+            document.getElementById('testEnabled').textContent = modelInfo.enabled ? '✓ 已启用' : '✗ 未启用';
+            
+            // 测试结果
+            document.getElementById('testResponseTime').textContent = testResult.response_time + 'ms';
+            document.getElementById('testResponseLength').textContent = testResult.response_length + ' 字符';
+            document.getElementById('testTokensUsed').textContent = testResult.tokens_used;
+            document.getElementById('testApiKeyStatus').textContent = modelInfo.has_api_key ? '✓ 已配置' : '✗ 未配置';
+            
+            // AI 回复
+            document.getElementById('testResponse').textContent = testResult.response || '无回复内容';
+            
+            // 显示结果
+            document.getElementById('testResult').style.display = 'block';
+        }
+
+        // 显示测试错误
+        function showTestError(message) {
+            document.getElementById('testErrorMessage').textContent = message;
+            document.getElementById('testError').style.display = 'block';
+            document.getElementById('retryTestBtn').style.display = 'inline-block';
+        }
+
+        // 重试测试
+        function retryTest() {
+            if (currentTestModelId) {
+                testModel(currentTestModelId);
+            }
+        }
+
+        // 获取模型类型文本
+        function getModelTypeText(type) {
+            const typeMap = {
+                'text': '📝 文本推理',
+                'image': '🖼️ 图像生成',
+                'video': '🎬 视频生成',
+                'audio': '🎵 音频生成',
+                'ppt': '📊 PPT 生成',
+                'code': '💻 代码生成',
+                'custom': '自定义'
+            };
+            return typeMap[type] || type;
         }
 
         // 显示通知
