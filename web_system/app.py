@@ -1600,7 +1600,7 @@ def get_chapter_content_template(section_title, requirement_content=''):
     """
     # 信息型字段 - 简��、具体
     info_templates = {
-        '项目名称': '根据��������������������文档提取的项目名称',
+        '项目名称': '根据����������������������文档提取的项目名称',
         '项目建设单位': '根据需求文档提取���建设单位名�������������',
         '负责人': 'XXX',
         '联系方式': '电话：XXX-XXXXXXX',
@@ -3565,7 +3565,7 @@ def delete_model_v2(model_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/v2/models/toggle', methods=['POST'])
+@app.route('/api/v2/models/<model_id>/toggle', methods=['POST'])
 def toggle_model_v2(model_id):
     """切换模型启用状态"""
     try:
