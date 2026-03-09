@@ -2,6 +2,11 @@
 """
 未来社区建设方案生成系统 - Flask 后端 (AI 增强版)
 支持调用 Qwen API 生成定制化内容
+
+V2.0 更新：集成 AI 内容优化
+- 数据一致性管理
+- 需求覆盖度检查
+- 全文质量审校
 """
 
 import os
@@ -22,6 +27,11 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 import re
 import base64
+
+# 导入 AI 内容优化服务
+from services.data_point_manager import DataPointManager
+from services.requirement_analyzer import RequirementAnalyzer
+from services.quality_reviewer import QualityReviewer
 
 app = Flask(__name__)
 CORS(app)
@@ -1709,15 +1719,25 @@ def generate_chapter(doc, chapter_title, sections, requirement_content, template
 
 def process_document_async(task_id, template_type, requirement_content, template_content,
                            user_prompt, api_key, model, output_path):
-    """异步处理文档生成任务 - 分章节生成，每章等待确认"""
-    
+    """异步处理文档生成任务 - 分章节生成，每章等待确认（集成 AI 内容优化）"""
+
     # 全局变量用于持续追踪文档
     doc_container = {'doc': None}
     
+    # 初始化优化服务
+    from ai_engine import reset_optimization_services, get_data_point_manager, get_requirement_analyzer
+    reset_optimization_services()
+    dp_manager = get_data_point_manager()
+    req_analyzer = get_requirement_analyzer()
+    quality_reviewer = QualityReviewer()
+    
+    # 记录所有章节内容（用于质量审校）
+    chapter_contents = {}
+
     def progress_callback(progress, message):
         """进度回调函数"""
         task_manager.update_task_progress(task_id, progress=progress, message=message)
-    
+
     def save_partial_document():
         """保存部分生成的文档"""
         if doc_container['doc']:
@@ -1725,15 +1745,28 @@ def process_document_async(task_id, template_type, requirement_content, template
             partial_path = os.path.join(app.config['OUTPUT_FOLDER'], partial_filename)
             doc_container['doc'].save(partial_path)
             task_manager.set_partial_filename(task_id, partial_filename)
-    
+
     try:
         # 标记任务开始
         task_manager.set_task_started(task_id)
-        
+
         # 更新状态：解析文件
         task_manager.update_task_progress(task_id, progress=5,
             status=TaskStatus.PARSING_FILE.value, message='解析上传文件中...')
         
+        # 从需求文档提取初始数据点和需求点
+        if requirement_content:
+            task_manager.update_task_progress(task_id, progress=7,
+                message='分析需求文档，提取关键信息...')
+            # 提取数据点
+            initial_data = dp_manager.extract_from_text(requirement_content, "需求文档")
+            if initial_data:
+                dp_manager.update(initial_data, "需求文档")
+                print(f'[INFO] 从需求文档提取数据点: {list(initial_data.keys())}')
+            # 提取需求点
+            req_analyzer.extract(requirement_content)
+            print(f'[INFO] 从需求文档提取需求点完成')
+
         # 更新状态：AI 生成
         task_manager.update_task_progress(task_id, progress=10,
             status=TaskStatus.GENERATING_AI.value, message='准备生成文档...')
@@ -1900,6 +1933,42 @@ def process_document_async(task_id, template_type, requirement_content, template
         # 所有章节生成完成
         doc.save(output_path)
         task_manager.set_partial_filename(task_id, None)
+        
+        # 质量审校
+        task_manager.update_task_progress(task_id, progress=98,
+            message='正在进行质量审校...')
+        try:
+            # 获取所有数据点和需求点
+            data_points = dp_manager.get_all()
+            requirements = req_analyzer.get_all_requirements()
+            
+            # 生成审校报告
+            review_report = quality_reviewer.generate_report(
+                chapter_contents=chapter_contents,
+                data_points=data_points,
+                requirements=requirements
+            )
+            
+            # 保存审校报告
+            report_filename = f'review_report_{task_id[:8]}.md'
+            report_path = os.path.join(app.config['OUTPUT_FOLDER'], report_filename)
+            with open(report_path, 'w', encoding='utf-8') as f:
+                f.write(review_report.to_markdown())
+            
+            print(f'[INFO] 质量审校完成：{report_path}')
+            print(f'[INFO] 综合评分：{review_report.overall_score:.1f}/100')
+            print(f'[INFO] 数据一致性：{review_report.data_consistency_rate:.1%}')
+            print(f'[INFO] 需求覆盖率：{review_report.requirement_coverage_rate:.1%}')
+            
+            # 如果有冲突或未覆盖需求，输出警告
+            if review_report.consistency_issues:
+                print(f'[WARN] 发现 {len(review_report.consistency_issues)} 个数据一致性问题')
+            if review_report.coverage_issues:
+                print(f'[WARN] 发现 {len(review_report.coverage_issues)} 个未覆盖需求')
+                
+        except Exception as e:
+            print(f'[WARN] 质量审校失败：{e}')
+        
         task_manager.mark_task_completed(task_id, output_filename=os.path.basename(output_path))
         print(f'[INFO] 文档生成完成：{output_path}')
 
@@ -2240,27 +2309,43 @@ def generate():
 
         # 读取模板文件
         if template_file and allowed_file(template_file.filename):
-            filename = secure_filename(template_file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], f'{uuid.uuid4()}_{filename}')
+            original_filename = secure_filename(template_file.filename)
+            # 确保保留扩展名
+            if '.' not in original_filename:
+                ext = template_file.filename.rsplit('.', 1)[1].lower()
+                original_filename = f'{original_filename}.{ext}'
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], f'{uuid.uuid4()}_{original_filename}')
             template_file.save(filepath)
-            template_filename = filename
+            template_filename = original_filename
 
-            if filename.endswith('.docx'):
+            if original_filename.endswith('.docx'):
                 template_content = read_docx_text(filepath)
-            elif filename.endswith('.txt'):
+                print(f'[DEBUG] 读取模板文件：{filepath}, 长度：{len(template_content)}', flush=True)
+            elif original_filename.endswith('.txt'):
                 template_content = read_txt_text(filepath)
+                print(f'[DEBUG] 读取模板文件：{filepath}, 长度：{len(template_content)}', flush=True)
+        else:
+            print(f'[WARNING] 模板文件未上传或格式不允许：{template_file}', flush=True)
 
         # 读取需求文件
         if requirement_file and allowed_file(requirement_file.filename):
-            filename = secure_filename(requirement_file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], f'{uuid.uuid4()}_{filename}')
+            original_filename = secure_filename(requirement_file.filename)
+            # 确保保留扩展名
+            if '.' not in original_filename:
+                ext = requirement_file.filename.rsplit('.', 1)[1].lower()
+                original_filename = f'{original_filename}.{ext}'
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], f'{uuid.uuid4()}_{original_filename}')
             requirement_file.save(filepath)
-            requirement_filename = filename
+            requirement_filename = original_filename
 
-            if filename.endswith('.docx'):
+            if original_filename.endswith('.docx'):
                 requirement_content = read_docx_text(filepath)
-            elif filename.endswith('.txt'):
+                print(f'[DEBUG] 读取需求文件：{filepath}, 长度：{len(requirement_content)}', flush=True)
+            elif original_filename.endswith('.txt'):
                 requirement_content = read_txt_text(filepath)
+                print(f'[DEBUG] 读取需求文件：{filepath}, 长度：{len(requirement_content)}', flush=True)
+        else:
+            print(f'[WARNING] 需求文件未上传或格式不允许：{requirement_file}', flush=True)
 
         # 创建任务
         task_id = task_manager.create_task(
