@@ -730,20 +730,27 @@
         // 加载模型列表
         async function loadModels() {
             try {
-                const response = await fetch('/api/models/enabled');
+                const response = await fetch('/api/v2/models/enabled');
                 const data = await response.json();
-                
+
                 if (data.success) {
                     const select = document.getElementById('modelSelect');
                     select.innerHTML = '';
-                    
-                    data.models.forEach(model => {
+
+                    if (data.models.length === 0) {
                         const option = document.createElement('option');
-                        option.value = model.id;
-                        option.textContent = model.name;
+                        option.value = '';
+                        option.textContent = '暂无启用的模型，请前往模型配置管理页面启用';
                         select.appendChild(option);
-                    });
-                    
+                    } else {
+                        data.models.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model.id;
+                            option.textContent = `${model.provider_icon} ${model.provider_name} - ${model.name}`;
+                            select.appendChild(option);
+                        });
+                    }
+
                     // 更新模型说明
                     updateModelDescription();
                 } else {

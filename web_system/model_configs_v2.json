@@ -1,0 +1,29 @@
+{
+  "zhipu": {
+    "id": "zhipu",
+    "name": "智谱 AI",
+    "icon": "🧠",
+    "base_url": "https://open.bigmodel.cn/api/paas/v4",
+    "models": [
+      {
+        "id": "GLM-4.7",
+        "provider_id": "zhipu",
+        "name": "智普文本推理大模型",
+        "type": "text",
+        "model": "GLM-4.7-Flash",
+        "api_key": "34004c68bf1847dab68a7f8080e1ec7d.rKmKjDQdu9nqFNDt",
+        "base_url": "",
+        "max_tokens": 2000,
+        "temperature": 0.7,
+        "timeout": 120,
+        "enabled": true,
+        "description": "",
+        "headers": {},
+        "request_format": "openai",
+        "response_path": "choices.0.message.content",
+        "is_custom": true
+      }
+    ],
+    "is_custom": false
+  }
+}

@@ -296,7 +296,7 @@ class ModelConfig:
     max_tokens: int = 2000               # 最大 token 数
     temperature: float = 0.7             # 温度参数
     timeout: int = 120                   # 超时时间（秒）
-    enabled: bool = True                 # 是否启用
+    enabled: bool = False                # 是否启用（默认关闭）
     description: str = ""                # 描述
     headers: Dict[str, str] = field(default_factory=dict)  # 自定义请求头
     request_format: str = "openai"       # 请求格式
@@ -549,6 +549,12 @@ def get_model_config_manager_v2() -> ModelConfigManagerV2:
     if _model_config_manager_v2 is None:
         _model_config_manager_v2 = ModelConfigManagerV2()
     return _model_config_manager_v2
+
+
+def get_model_config_v2(model_id: str):
+    """获取模型配置（用于生成文档时）"""
+    manager = get_model_config_manager_v2()
+    return manager.get_model(model_id)
 
 
 # 测试代码
