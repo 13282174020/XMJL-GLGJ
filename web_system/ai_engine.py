@@ -114,7 +114,7 @@ def _extract_ai_response(result: Dict, model_config: ModelConfig) -> str:
     
     支持多种响应格式：
     1. 标准 OpenAI 格式：choices.0.message.content
-    2. DeepSeek R1: choices.0.message.reasoning_content (仅当 content 为空时)
+    2. 思考过程内容：choices.0.message.reasoning_content（当 content 为空时）
     3. 百炼格式：output.text
     
     Args:
@@ -127,17 +127,15 @@ def _extract_ai_response(result: Dict, model_config: ModelConfig) -> str:
     # 首先尝试从配置的 response_path 提取
     content = _extract_value_from_path(result, model_config.response_path)
     
-    # 如果提取到了内容，直接返回
+    # 如果提取到了内容且不为空，直接返回
     if content:
         return content
     
-    # 如果没有提取到内容，尝试备用路径
-    # 仅对 DeepSeek 模型尝试 reasoning_content
-    if model_config.provider_id == "deepseek" or "deepseek" in model_config.model.lower():
-        # 尝试 reasoning_content
-        reasoning = _extract_value_from_path(result, "choices.0.message.reasoning_content")
-        if reasoning:
-            return reasoning
+    # 如果 content 为空，尝试 reasoning_content（思考过程）
+    # 适用于 GLM-4.7、DeepSeek R1 等启用思考模式的模型
+    reasoning = _extract_value_from_path(result, "choices.0.message.reasoning_content")
+    if reasoning:
+        return reasoning
     
     # 尝试 output 字段（百炼格式）
     if "output" in result and "text" in result["output"]:
