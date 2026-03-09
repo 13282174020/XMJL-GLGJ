@@ -85,11 +85,11 @@ INFO_PATTERNS = {
 
 def _extract_value_from_path(data: Dict, path: str) -> Any:
     """根据路径从嵌套字典中提取值
-    
+
     Args:
         data: 字典数据
         path: 路径，如 "choices.0.message.content"
-        
+
     Returns:
         提取的值
     """
@@ -107,6 +107,44 @@ def _extract_value_from_path(data: Dict, path: str) -> Any:
         else:
             return None
     return current
+
+
+def _extract_ai_response(result: Dict, model_config: ModelConfig) -> str:
+    """提取 AI 响应内容
+    
+    支持多种响应格式：
+    1. 标准格式：choices.0.message.content
+    2. DeepSeek R1: choices.0.message.reasoning_content (优先) 或 content
+    3. 百炼格式：output.text
+    
+    Args:
+        result: API 返回的原始数据
+        model_config: 模型配置
+        
+    Returns:
+        提取的响应内容
+    """
+    # 首先尝试从配置的 response_path 提取
+    content = _extract_value_from_path(result, model_config.response_path)
+    
+    # 如果提取到了内容，直接返回
+    if content:
+        return content
+    
+    # 如果没有提取到内容，尝试备用路径
+    # DeepSeek R1 可能返回 reasoning_content
+    if model_config.provider == "deepseek" or "deepseek" in model_config.model.lower():
+        # 尝试 reasoning_content
+        reasoning = _extract_value_from_path(result, "choices.0.message.reasoning_content")
+        if reasoning:
+            return reasoning
+    
+    # 尝试 output 字段（百炼格式）
+    if "output" in result and "text" in result["output"]:
+        return result["output"]["text"]
+    
+    # 尝试直接返回错误信息
+    return f"[API 返回格式异常] 无法从路径 {model_config.response_path} 提取内容：{json.dumps(result, ensure_ascii=False)[:500]}"
 
 
 def call_ai_api(
@@ -174,12 +212,12 @@ def call_ai_api(
 
         if response.status_code == 200:
             result = response.json()
-            # 根据配置的路径提取内容
-            content = _extract_value_from_path(result, model_config.response_path)
-            if content:
+            # 使用智能提取逻辑
+            content = _extract_ai_response(result, model_config)
+            if content and not content.startswith('[API'):
                 return content.strip()
             else:
-                return f"[API 返回格式异常] 无法从路径 {model_config.response_path} 提取内容: {json.dumps(result, ensure_ascii=False)[:200]}"
+                return content
         else:
             error_msg = response.text
             try:
