@@ -32,6 +32,7 @@ import base64
 from services.data_point_manager import DataPointManager
 from services.requirement_analyzer import RequirementAnalyzer
 from services.quality_reviewer import QualityReviewer
+from model_config import get_model_config_manager, ModelConfig, get_enabled_models, get_model_config
 
 app = Flask(__name__)
 CORS(app)
@@ -1599,7 +1600,7 @@ def get_chapter_content_template(section_title, requirement_content=''):
     # 信息型字段 - 简短、具体
     info_templates = {
         '项目名称': '根据需求文档提取的项目名称',
-        '项目建设单位': '根据需求文档提取的建设单位名称',
+        '项目建设单位': '根据需求文档提取���建设单位名�������������',
         '负责人': 'XXX',
         '联系方式': '电话：XXX-XXXXXXX',
         '建设工期': 'XX 个月',
@@ -1647,15 +1648,17 @@ def get_chapter_content_template(section_title, requirement_content=''):
 
 
 def generate_chapter_content(doc, chapter_node, requirement_content, template_content,
-                              user_prompt, api_key, model, styles, depth=0):
+                              user_prompt, model_config, styles, depth=0):
     """
     递归生成章节内容
     严格按照目录树结构生成标题和内容
-    
+
     优化：支持 AI 生成
-    - 有 API Key：调用 AI 生成内容
-    - 无 API Key：使用模板内容
+    - 有模型配置：调用 AI 生成内容
+    - 无模型配置：使用模板内容
     """
+    from ai_engine import generate_section_content_with_ai
+    
     children = chapter_node.get('children')
 
     # 判断是否有子节点
@@ -1668,31 +1671,32 @@ def generate_chapter_content(doc, chapter_node, requirement_content, template_co
 
             # 递归处理子节点
             generate_chapter_content(doc, child, requirement_content, template_content,
-                                      user_prompt, api_key, model, styles, depth + 1)
+                                      user_prompt, model_config, styles, depth + 1)
     else:
         # 叶子节点，生成内容
         section_title = chapter_node['title']
-        
+
         # 判断是否使用 AI 生成
-        if api_key and api_key.strip():
+        if model_config and model_config.api_key:
             # 调用 AI 生成
-            from ai_engine import generate_section_content_with_ai
             content = generate_section_content_with_ai(
                 section_title=section_title,
                 requirement_text=requirement_content,
                 template_text=template_content,
                 user_instruction=user_prompt,
-                api_key=api_key,
-                model=model
+                model_config=model_config,
+                fallback_to_template=False  # AI 失败时返回错误，不降级
             )
-            # 如果 AI 生成失败，降级使用模板
-            if content.startswith('[') and 'API' in content:
-                print(f'[WARNING] AI 生成失败，使用模板：{section_title}')
-                content = get_chapter_content_template(section_title)
+            # 检查是否生成失败
+            if content.startswith('[AI 生成失败]'):
+                print(f'[ERROR] 章节生成失败：{section_title}')
+                # 添加错误提示到文档
+                add_normal_paragraph(doc, f"【生成错误】{content}", styles=styles)
+                return
         else:
             # 使用模板内容
             content = get_chapter_content_template(section_title)
-        
+
         # 添加正文内容
         for para_text in content.split('\n'):
             if para_text.strip():
@@ -1700,15 +1704,35 @@ def generate_chapter_content(doc, chapter_node, requirement_content, template_co
 
 
 def generate_chapter(doc, chapter_title, sections, requirement_content, template_content,
-                     user_prompt, api_key, model, section_title_prefix=''):
-    """生成单个章节的内容（使用本地生成方式）"""
+                     user_prompt, model_config, section_title_prefix=''):
+    """生成单个章节的内容（使用 AI 生成）"""
+    from ai_engine import generate_section_content_with_ai
+
     add_heading(doc, chapter_title, level=1)
 
     for section_title in sections:
         add_heading(doc, section_title, level=2)
 
-        # 使用本地方式生成内容
-        content = get_chapter_content_template(section_title)
+        # 使用 AI 生成内容
+        if model_config and model_config.api_key:
+            content = generate_section_content_with_ai(
+                section_title=section_title,
+                requirement_text=requirement_content,
+                template_text=template_content,
+                user_instruction=user_prompt,
+                model_config=model_config,
+                fallback_to_template=False  # AI 失败时返回错误，不降级
+            )
+            # 检查是否生成失败
+            if content.startswith('[AI 生成失败]'):
+                print(f'[ERROR] 章节生成失败：{section_title}')
+                # 添加错误提示到文档
+                add_normal_paragraph(doc, f"【生成错误】{content}")
+                continue
+        else:
+            # 没有模型配置，使用模板
+            content = get_chapter_content_template(section_title)
+
         for para_text in content.split('\n'):
             if para_text.strip():
                 add_normal_paragraph(doc, para_text.strip())
@@ -1718,19 +1742,22 @@ def generate_chapter(doc, chapter_title, sections, requirement_content, template
 
 
 def process_document_async(task_id, template_type, requirement_content, template_content,
-                           user_prompt, api_key, model, output_path):
-    """异步处理文档生成任务 - 分章节生成，每章等待确认（集成 AI 内容优化）"""
+                           user_prompt, model_config, output_path):
+    """异步处理文档生成任务 - 分章节生成，每章等待确认（集成 AI 内容优化）
+    
+    注意：此函数已弃用，请使用 process_document_async_v2
+    """
 
     # 全局变量用于持续追踪文档
     doc_container = {'doc': None}
-    
+
     # 初始化优化服务
     from ai_engine import reset_optimization_services, get_data_point_manager, get_requirement_analyzer
     reset_optimization_services()
     dp_manager = get_data_point_manager()
     req_analyzer = get_requirement_analyzer()
     quality_reviewer = QualityReviewer()
-    
+
     # 记录所有章节内容（用于质量审校）
     chapter_contents = {}
 
@@ -1896,7 +1923,7 @@ def process_document_async(task_id, template_type, requirement_content, template
             doc = generate_chapter(
                 doc, chapter_title, sections,
                 requirement_content, template_content, user_prompt,
-                api_key, model
+                model_config
             )
             
             # 标记章节完成
@@ -1982,9 +2009,26 @@ def process_document_async(task_id, template_type, requirement_content, template
 # 使用保存的目录配置生成文档，而不是硬编码的 TEMPLATE_TYPES
 
 def process_document_async_v2(task_id, template_type, requirement_content, template_content,
-                           user_prompt, api_key, model, output_path):
-    """异步处理文档生成任务 - 使用保存的目录配置"""
+                           user_prompt, model_config, output_path):
+    """异步处理文档生成任务 - 使用保存的目录配置（集成 AI 内容优化）
+    
+    Args:
+        task_id: 任务ID
+        template_type: 模板类型
+        requirement_content: 需求文档内容
+        template_content: 模板文档内容
+        user_prompt: 用户补充要求
+        model_config: 模型配置对象
+        output_path: 输出文件路径
+    """
     doc_container = {'doc': None}
+    
+    # 初始化优化服务
+    from ai_engine import reset_optimization_services, get_data_point_manager, get_requirement_analyzer
+    reset_optimization_services()
+    dp_manager = get_data_point_manager()
+    req_analyzer = get_requirement_analyzer()
+    quality_reviewer = QualityReviewer()
 
     def save_partial_document():
         if doc_container['doc']:
@@ -1997,6 +2041,20 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
         task_manager.set_task_started(task_id)
         task_manager.update_task_progress(task_id, progress=5,
             status=TaskStatus.PARSING_FILE.value, message='解析上传文件中...')
+        
+        # 从需求文档提取初始数据点和需求点
+        if requirement_content:
+            task_manager.update_task_progress(task_id, progress=7,
+                message='分析需求文档，提取关键信息...')
+            # 提取数据点
+            initial_data = dp_manager.extract_from_text(requirement_content, "需求文档")
+            if initial_data:
+                dp_manager.update(initial_data, "需求文档")
+                print(f'[INFO] 从需求文档提取数据点: {list(initial_data.keys())}')
+            # 提取需求点
+            req_analyzer.extract(requirement_content)
+            print(f'[INFO] 从需求文档提取需求点完成')
+        
         task_manager.update_task_progress(task_id, progress=10,
             status=TaskStatus.GENERATING_AI.value, message='准备生成文档...')
 
@@ -2097,8 +2155,7 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
                     requirement_content=requirement_content,
                     template_content=template_content,
                     user_prompt=user_prompt,
-                    api_key=api_key,
-                    model=model,
+                    model_config=model_config,
                     styles=styles
                 )
 
@@ -2110,6 +2167,42 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
             save_partial_document()
 
         doc.save(output_path)
+        
+        # 质量审校
+        task_manager.update_task_progress(task_id, progress=98,
+            message='正在进行质量审校...')
+        try:
+            # 获取所有数据点和需求点
+            data_points = dp_manager.get_all()
+            requirements = req_analyzer.get_all_requirements()
+            
+            # 生成审校报告
+            review_report = quality_reviewer.generate_report(
+                chapter_contents={},  # v2 版本没有逐章记录内容
+                data_points=data_points,
+                requirements=requirements
+            )
+            
+            # 保存审校报告
+            report_filename = f'review_report_{task_id[:8]}.md'
+            report_path = os.path.join(app.config['OUTPUT_FOLDER'], report_filename)
+            with open(report_path, 'w', encoding='utf-8') as f:
+                f.write(review_report.to_markdown())
+            
+            print(f'[INFO] 质量审校完成：{report_path}')
+            print(f'[INFO] 综合评分：{review_report.overall_score:.1f}/100')
+            print(f'[INFO] 数据一致性：{review_report.data_consistency_rate:.1%}')
+            print(f'[INFO] 需求覆盖率：{review_report.requirement_coverage_rate:.1%}')
+            
+            # 如果有冲突或未覆盖需求，输出警告
+            if review_report.consistency_issues:
+                print(f'[WARN] 发现 {len(review_report.consistency_issues)} 个数据一致性问题')
+            if review_report.coverage_issues:
+                print(f'[WARN] 发现 {len(review_report.coverage_issues)} 个未覆盖需求')
+                
+        except Exception as e:
+            print(f'[WARN] 质量审校失败：{e}')
+        
         task_manager.mark_task_completed(task_id, output_filename=os.path.basename(output_path))
         print(f'[INFO] 文档生成完成：{output_path}')
 
@@ -2132,6 +2225,12 @@ def task_center():
     return render_template('task_center.html')
 
 
+@app.route('/model-config')
+def model_config_page():
+    """模型配置管理页面"""
+    return render_template('model_config.html')
+
+
 # ==================== 代码生成接口（A 方案） ====================
 
 @app.route('/api/generate_code', methods=['POST'])
@@ -2146,21 +2245,31 @@ def generate_code():
         # 读取需求文档
         requirement_file = request.files.get('requirement_file')
         requirement_content = ''
-        
+
         if requirement_file and allowed_file(requirement_file.filename):
             filename = secure_filename(requirement_file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], f'{uuid.uuid4()}_{filename}')
             requirement_file.save(filepath)
-            
+
             if filename.endswith('.docx'):
                 requirement_content = read_docx_text(filepath)
+                print(f'[DEBUG] 读取需求文档：{filepath}, 长度：{len(requirement_content)}', flush=True)
             elif filename.endswith('.txt'):
                 requirement_content = read_txt_text(filepath)
-            
+                print(f'[DEBUG] 读取需求文档：{filepath}, 长度：{len(requirement_content)}', flush=True)
+            elif filename.endswith('.doc'):
+                print(f'[WARNING] 暂不支持读取 .doc 格式文件，请另存为 .docx 格式：{filepath}', flush=True)
+            elif filename.endswith('.pdf'):
+                print(f'[WARNING] 暂不支持读取 .pdf 格式文件，请转换为 .txt 或 .docx 格式：{filepath}', flush=True)
+            else:
+                print(f'[WARNING] 未知文件格式：{filepath}', flush=True)
+
             # 同时保存为 requirement.txt 方便后续使用
             req_path = os.path.join(app.config['UPLOAD_FOLDER'], 'requirement.txt')
             with open(req_path, 'w', encoding='utf-8') as f:
                 f.write(requirement_content)
+        else:
+            print(f'[WARNING] 需求文件未上传或格式不允许：{requirement_file}', flush=True)
         
         # 加载目录配置
         chapters_path = os.path.join(app.config['UPLOAD_FOLDER'], 'chapter_config.json')
@@ -2295,8 +2404,21 @@ def generate():
         # 获取表单数据
         template_type = request.form.get('template_type', 'future_community')
         user_prompt = request.form.get('requirement', '')
-        api_key = request.form.get('api_key', '')
         model = request.form.get('model', 'qwen-max')
+        
+        # 获取模型配置
+        model_config = get_model_config(model)
+        if not model_config:
+            return jsonify({'success': False, 'message': f'模型 {model} 不存在'}), 400
+        
+        if not model_config.enabled:
+            return jsonify({'success': False, 'message': f'模型 {model_config.name} 已禁用'}), 400
+        
+        if not model_config.api_key:
+            return jsonify({'success': False, 'message': f'模型 {model_config.name} 的 API Key 未配置，请先配置'}), 400
+        
+        # 使用模型配置中的 API Key
+        api_key = model_config.api_key
 
         # 处理上传的文件
         template_file = request.files.get('template')
@@ -2344,6 +2466,12 @@ def generate():
             elif original_filename.endswith('.txt'):
                 requirement_content = read_txt_text(filepath)
                 print(f'[DEBUG] 读取需求文件：{filepath}, 长度：{len(requirement_content)}', flush=True)
+            elif original_filename.endswith('.doc'):
+                print(f'[WARNING] 暂不支持读取 .doc 格式文件，请另存为 .docx 格式：{filepath}', flush=True)
+            elif original_filename.endswith('.pdf'):
+                print(f'[WARNING] 暂不支持读取 .pdf 格式文件，请转换为 .txt 或 .docx 格式：{filepath}', flush=True)
+            else:
+                print(f'[WARNING] 未知文件格式：{filepath}', flush=True)
         else:
             print(f'[WARNING] 需求文件未上传或格式不允许：{requirement_file}', flush=True)
 
@@ -2367,7 +2495,7 @@ def generate():
         thread = threading.Thread(
             target=process_document_async_v2,
             args=(task_id, template_type, requirement_content, template_content,
-                  user_prompt, api_key, model, output_path)
+                  user_prompt, model_config, output_path)
         )
         thread.daemon = True
         thread.start()
@@ -2830,15 +2958,157 @@ def cleanup():
         import time
         current_time = time.time()
         cleaned = 0
-        
+
         for folder in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER']]:
             for filename in os.listdir(folder):
                 filepath = os.path.join(folder, filename)
                 if os.path.isfile(filepath) and current_time - os.path.getctime(filepath) > 3600:
                     os.remove(filepath)
                     cleaned += 1
-        
+
         return jsonify({'success': True, 'cleaned': cleaned})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== 模型配置管理 API ====================
+
+@app.route('/api/models', methods=['GET'])
+def get_models():
+    """获取所有模型配置列表"""
+    try:
+        manager = get_model_config_manager()
+        models = manager.get_config_list()
+        return jsonify({'success': True, 'models': models})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/models/enabled', methods=['GET'])
+def get_enabled_models_list():
+    """获取启用的模型列表"""
+    try:
+        models = get_enabled_models()
+        return jsonify({'success': True, 'models': models})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/models/<model_id>', methods=['GET'])
+def get_model_detail(model_id):
+    """获取模型配置详情"""
+    try:
+        manager = get_model_config_manager()
+        config = manager.get_config(model_id)
+        if config:
+            # 返回配置，但隐藏 API Key
+            data = config.to_dict()
+            data['api_key'] = '******' if data['api_key'] else ''
+            return jsonify({'success': True, 'model': data})
+        else:
+            return jsonify({'success': False, 'error': '模型不存在'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/models/<model_id>/apikey', methods=['POST'])
+def update_model_api_key(model_id):
+    """更新模型 API Key"""
+    try:
+        data = request.get_json()
+        api_key = data.get('api_key', '')
+        
+        manager = get_model_config_manager()
+        config = manager.get_config(model_id)
+        if not config:
+            return jsonify({'success': False, 'error': '模型不存在'}), 404
+        
+        # 更新 API Key
+        success = manager.update_config(model_id, api_key=api_key)
+        if success:
+            return jsonify({'success': True, 'message': 'API Key 更新成功'})
+        else:
+            return jsonify({'success': False, 'error': '更新失败'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/models/<model_id>/toggle', methods=['POST'])
+def toggle_model(model_id):
+    """启用/禁用模型"""
+    try:
+        data = request.get_json()
+        enabled = data.get('enabled', True)
+        
+        manager = get_model_config_manager()
+        config = manager.get_config(model_id)
+        if not config:
+            return jsonify({'success': False, 'error': '模型不存在'}), 404
+        
+        success = manager.update_config(model_id, enabled=enabled)
+        if success:
+            return jsonify({'success': True, 'message': f'模型已{"启用" if enabled else "禁用"}'})
+        else:
+            return jsonify({'success': False, 'error': '更新失败'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/models/<model_id>/test', methods=['POST'])
+def test_model(model_id):
+    """测试模型配置"""
+    try:
+        manager = get_model_config_manager()
+        config = manager.get_config(model_id)
+        if not config:
+            return jsonify({'success': False, 'error': '模型不存在'}), 404
+        
+        if not config.api_key:
+            return jsonify({'success': False, 'error': 'API Key 未配置'}), 400
+        
+        # 测试调用
+        from ai_engine import call_ai_api
+        test_prompt = "你好，请用一句话介绍你自己。"
+        result = call_ai_api(test_prompt, config)
+        
+        if result.startswith('[') and ('API' in result or 'Error' in result or 'error' in result):
+            return jsonify({'success': False, 'error': result}), 400
+        else:
+            return jsonify({'success': True, 'message': '连接成功', 'response': result[:100]})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/models/custom', methods=['POST'])
+def add_custom_model():
+    """添加自定义模型配置"""
+    try:
+        data = request.get_json()
+        
+        # 创建新配置
+        config = ModelConfig(
+            id=data.get('id'),
+            name=data.get('name'),
+            provider=data.get('provider', 'custom'),
+            model=data.get('model'),
+            api_key=data.get('api_key', ''),
+            base_url=data.get('base_url'),
+            max_tokens=data.get('max_tokens', 2000),
+            temperature=data.get('temperature', 0.7),
+            timeout=data.get('timeout', 120),
+            enabled=True,
+            description=data.get('description', ''),
+            request_format=data.get('request_format', 'openai'),
+            response_path=data.get('response_path', 'choices.0.message.content')
+        )
+        
+        manager = get_model_config_manager()
+        success = manager.add_config(config)
+        
+        if success:
+            return jsonify({'success': True, 'message': '模型配置添加成功'})
+        else:
+            return jsonify({'success': False, 'error': '添加失败'}), 500
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
