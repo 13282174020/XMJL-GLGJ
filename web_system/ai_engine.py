@@ -150,7 +150,7 @@ def call_ai_api(
     model_config: ModelConfig
 ) -> str:
     """通用 AI API 调用函数
-    
+
     根据模型配置调用不同的 AI API
 
     Args:
@@ -162,7 +162,19 @@ def call_ai_api(
     """
     if not model_config.api_key:
         return "[API 错误] API Key 未配置"
-    
+
+    # 如果 base_url 为空，尝试从厂商配置获取
+    base_url = model_config.base_url
+    if not base_url:
+        from model_config_v2 import get_model_config_manager_v2
+        manager = get_model_config_manager_v2()
+        provider = manager.get_provider(model_config.provider_id)
+        if provider:
+            base_url = provider.base_url
+            print(f'[DEBUG] 模型 {model_config.id} 的 base_url 为空，使用厂商默认值：{base_url}')
+        else:
+            return f"[API 错误] base_url 未配置且无法从厂商 {model_config.provider_id} 获取默认值"
+
     # 构建请求头
     headers = {
         'Content-Type': 'application/json'
@@ -214,7 +226,7 @@ def call_ai_api(
             timeout = max(timeout, 300)  # 至少 5 分钟
         
         response = requests.post(
-            model_config.base_url,
+            base_url,
             headers=headers,
             json=payload,
             timeout=timeout
