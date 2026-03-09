@@ -1600,7 +1600,7 @@ def get_chapter_content_template(section_title, requirement_content=''):
     """
     # 信息型字段 - 简��、具体
     info_templates = {
-        '项目名称': '根据��������������文档提取的项目名称',
+        '项目名称': '根据����������������文档提取的项目名称',
         '项目建设单位': '根据需求文档提取���建设单位名�������������',
         '负责人': 'XXX',
         '联系方式': '电话：XXX-XXXXXXX',
@@ -3409,6 +3409,176 @@ def add_custom_model():
             return jsonify({'success': True, 'message': '模型配置添加成功'})
         else:
             return jsonify({'success': False, 'error': '添加失败'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== 模型配置管理 API v2 ====================
+
+@app.route('/model-config-v2')
+def model_config_v2_page():
+    """模型配置管理 v2 页面"""
+    return render_template('model_config_v2.html')
+
+
+@app.route('/api/v2/models/providers', methods=['GET'])
+def get_providers_v2():
+    """获取所有厂商列表"""
+    try:
+        from model_config_v2 import get_model_config_manager_v2
+        manager = get_model_config_manager_v2()
+        providers = manager.get_all_providers()
+        
+        result = [
+            {
+                'id': p.id,
+                'name': p.name,
+                'icon': p.icon,
+                'base_url': p.base_url,
+                'is_custom': p.is_custom,
+                'model_count': len(p.models)
+            }
+            for p in providers.values()
+        ]
+        
+        return jsonify({'success': True, 'providers': result})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/v2/models/providers/<provider_id>', methods=['GET'])
+def get_provider_models_v2(provider_id):
+    """获取指定厂商的所有模型"""
+    try:
+        from model_config_v2 import get_model_config_manager_v2
+        manager = get_model_config_manager_v2()
+        models = manager.get_models_by_provider(provider_id)
+        return jsonify({'success': True, 'models': models})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/v2/models/providers', methods=['POST'])
+def add_provider_v2():
+    """添加自定义厂商"""
+    try:
+        from model_config_v2 import get_model_config_manager_v2, ProviderConfig
+        manager = get_model_config_manager_v2()
+        
+        data = request.get_json()
+        provider = ProviderConfig(
+            id=data['id'],
+            name=data['name'],
+            icon=data.get('icon', '🔧'),
+            base_url=data['base_url'],
+            is_custom=True
+        )
+        
+        success = manager.add_custom_provider(provider)
+        if success:
+            return jsonify({'success': True, 'message': '厂商添加成功'})
+        else:
+            return jsonify({'success': False, 'message': '厂商 ID 已存在'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/v2/models', methods=['POST'])
+def add_model_v2():
+    """添加自定义模型"""
+    try:
+        from model_config_v2 import get_model_config_manager_v2, ModelConfig
+        manager = get_model_config_manager_v2()
+        
+        data = request.get_json()
+        model = ModelConfig(
+            id=data['id'],
+            provider_id=data['provider_id'],
+            name=data['name'],
+            type=data['type'],
+            model=data['model'],
+            api_key=data.get('api_key', ''),
+            base_url=data.get('base_url', ''),
+            max_tokens=data.get('max_tokens', 2000),
+            temperature=data.get('temperature', 0.7),
+            description=data.get('description', ''),
+            is_custom=True
+        )
+        
+        success = manager.add_custom_model(data['provider_id'], model)
+        if success:
+            return jsonify({'success': True, 'message': '模型添加成功'})
+        else:
+            return jsonify({'success': False, 'message': '厂商不存在'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/v2/models/<model_id>', methods=['GET'])
+def get_model_v2(model_id):
+    """获取模型配置详情"""
+    try:
+        from model_config_v2 import get_model_config_manager_v2
+        manager = get_model_config_manager_v2()
+        model = manager.get_model(model_id)
+        
+        if not model:
+            return jsonify({'success': False, 'message': '模型不存在'}), 404
+        
+        return jsonify({'success': True, 'model': model.to_dict()})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/v2/models/<model_id>', methods=['PUT'])
+def update_model_v2(model_id):
+    """更新模型配置"""
+    try:
+        from model_config_v2 import get_model_config_manager_v2
+        manager = get_model_config_manager_v2()
+        
+        data = request.get_json()
+        success = manager.update_model_config(model_id, **data)
+        
+        if success:
+            return jsonify({'success': True, 'message': '模型更新成功'})
+        else:
+            return jsonify({'success': False, 'message': '模型不存在'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/v2/models/<model_id>', methods=['DELETE'])
+def delete_model_v2(model_id):
+    """删除自定义模型"""
+    try:
+        from model_config_v2 import get_model_config_manager_v2
+        manager = get_model_config_manager_v2()
+        success = manager.delete_custom_model(model_id)
+        
+        if success:
+            return jsonify({'success': True, 'message': '模型删除成功'})
+        else:
+            return jsonify({'success': False, 'message': '模型不存在或不是自定义模型'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/v2/models/<model_id>/toggle', methods=['POST'])
+def toggle_model_v2(model_id):
+    """切换模型启用状态"""
+    try:
+        from model_config_v2 import get_model_config_manager_v2
+        manager = get_model_config_manager_v2()
+        
+        data = request.get_json()
+        enabled = data.get('enabled', True)
+        success = manager.update_model_config(model_id, enabled=enabled)
+        
+        if success:
+            return jsonify({'success': True, 'message': f'模型已{"启用" if enabled else "禁用"}'})
+        else:
+            return jsonify({'success': False, 'message': '模型不存在'}), 404
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
