@@ -364,7 +364,9 @@ class ModelConfigManagerV2:
                     max_tokens=model_data['max_tokens'],
                     temperature=model_data['temperature'],
                     description=model_data['description'],
-                    base_url=provider_data['base_url']
+                    base_url=provider_data.get('base_url', ''),  # 使用厂商的 base_url
+                    request_format='openai' if provider_id != 'dashscope' else 'dashscope',
+                    response_path='choices.0.message.content' if provider_id != 'dashscope' else 'output.text'
                 )
                 models.append(model)
             

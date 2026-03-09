@@ -3614,7 +3614,15 @@ def test_model_v2(model_id):
         
         # 构建测试 Prompt
         test_prompt = "请用一句话介绍你自己。"
-        
+
+        # 如果 base_url 为空，使用厂商的 base_url
+        base_url = model.base_url
+        if not base_url:
+            provider = manager.get_provider(model.provider_id)
+            if provider:
+                base_url = provider.base_url
+                print(f'[DEBUG] 模型 {model.id} 的 base_url 为空，使用厂商默认值：{base_url}')
+
         # 创建临时模型配置用于测试
         temp_config = ModelConfig(
             id=model.id,
@@ -3623,7 +3631,7 @@ def test_model_v2(model_id):
             type=model.type,
             model=model.model,
             api_key=model.api_key,
-            base_url=model.base_url,
+            base_url=base_url,
             max_tokens=100,  # 测试时限制输出长度
             temperature=model.temperature,
             timeout=model.timeout,
