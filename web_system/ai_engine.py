@@ -718,6 +718,82 @@ def get_format_guidance(section_title: str, template_section: str) -> str:
     return '\n'.join(guidance) if guidance else ''
 
 
+def extract_template_section(section_title: str, template_text: str) -> str:
+    """从模板文档中提取指定章节的内容
+    
+    支持匹配:
+    - "第三章 建设必要性"
+    - "3.1 建设必要性"
+    - "建设必要性"
+    
+    Args:
+        section_title: 章节标题
+        template_text: 模板文档全文
+        
+    Returns:
+        该章节的模板内容
+    """
+    if not template_text or not section_title:
+        return ""
+    
+    # 清理章节标题，提取核心部分
+    core_title = re.sub(r'^第 [一二三四五六七八九十\d]+[章条节款]\s*', '', section_title)
+    
+    # 尝试多种模式匹配
+    patterns = [
+        rf'{re.escape(section_title)}\s*\n',
+        rf'{re.escape(core_title)}\s*\n',
+        rf'\d+[\.\s]+{re.escape(core_title)}\s*\n',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, template_text, re.IGNORECASE)
+        if match:
+            start_pos = match.end()
+            # 查找下一个章节标题位置
+            next_section = re.search(
+                r'\n\s*(?:第 [一二三四五六七八九十\d]+[章条节款]|\d+[\.\s])',
+                template_text[start_pos:]
+            )
+            if next_section:
+                end_pos = start_pos + next_section.start()
+            else:
+                end_pos = len(template_text)
+            
+            content = template_text[start_pos:end_pos].strip()
+            # 限制长度，避免过长
+            return content[:2000] + ('...' if len(content) > 2000 else '')
+    
+    # 未找到特定章节，返回空字符串
+    return ""
+
+
+def get_document_structure(template_text: str) -> str:
+    """提取文档结构（章节标题列表）
+    
+    Args:
+        template_text: 模板文档全文
+        
+    Returns:
+        章节标题列表
+    """
+    structure = []
+    patterns = [
+        r'^第 ([一二三四五六七八九十\d]+)[章条节款]\s*(.+)$',
+        r'^(\d+[\.\s]+)(.+)$',
+    ]
+    
+    for line in template_text.split('\n'):
+        line = line.strip()
+        for pattern in patterns:
+            match = re.match(pattern, line)
+            if match:
+                structure.append(line)
+                break
+    
+    return '\n'.join(structure[:30])  # 最多 30 个章节
+
+
 def clean_ai_content(content: str, section_title: str) -> str:
     """清理 AI 生成的内容
 
