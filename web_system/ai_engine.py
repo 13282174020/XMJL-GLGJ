@@ -113,8 +113,8 @@ def _extract_ai_response(result: Dict, model_config: ModelConfig) -> str:
     """提取 AI 响应内容
     
     支持多种响应格式：
-    1. 标准格式：choices.0.message.content
-    2. DeepSeek R1: choices.0.message.reasoning_content (优先) 或 content
+    1. 标准 OpenAI 格式：choices.0.message.content
+    2. DeepSeek R1: choices.0.message.reasoning_content (仅当 content 为空时)
     3. 百炼格式：output.text
     
     Args:
@@ -132,8 +132,8 @@ def _extract_ai_response(result: Dict, model_config: ModelConfig) -> str:
         return content
     
     # 如果没有提取到内容，尝试备用路径
-    # DeepSeek R1 可能返回 reasoning_content
-    if model_config.provider == "deepseek" or "deepseek" in model_config.model.lower():
+    # 仅对 DeepSeek 模型尝试 reasoning_content
+    if model_config.provider_id == "deepseek" or "deepseek" in model_config.model.lower():
         # 尝试 reasoning_content
         reasoning = _extract_value_from_path(result, "choices.0.message.reasoning_content")
         if reasoning:
