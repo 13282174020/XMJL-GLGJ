@@ -36,7 +36,7 @@ PRESET_PROVIDERS = {
     "dashscope": {
         "name": "阿里云百炼",
         "icon": "🌐",
-        "base_url": "https://dashscope.aliyuncs.com/api/v1",
+        "base_url": "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
         "models": [
             {
                 "id": "qwen-max",
@@ -79,7 +79,7 @@ PRESET_PROVIDERS = {
     "zhipu": {
         "name": "智谱 AI",
         "icon": "🧠",
-        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
         "models": [
             {
                 "id": "glm-4",
@@ -122,7 +122,7 @@ PRESET_PROVIDERS = {
     "moonshot": {
         "name": "月之暗面 (Kimi)",
         "icon": "🌙",
-        "base_url": "https://api.moonshot.cn/v1",
+        "base_url": "https://api.moonshot.cn/v1/chat/completions",
         "models": [
             {
                 "id": "kimi-latest",
@@ -147,7 +147,7 @@ PRESET_PROVIDERS = {
     "deepseek": {
         "name": "深度求索 (DeepSeek)",
         "icon": "🔬",
-        "base_url": "https://api.deepseek.com",
+        "base_url": "https://api.deepseek.com/chat/completions",
         "models": [
             {
                 "id": "deepseek-chat",
@@ -190,7 +190,7 @@ PRESET_PROVIDERS = {
     "minimax": {
         "name": "MiniMax",
         "icon": "🤖",
-        "base_url": "https://api.minimax.chat/v1",
+        "base_url": "https://api.minimax.chat/v1/text/chatcompletion_v2",
         "models": [
             {
                 "id": "abab6.5-chat",
@@ -215,7 +215,7 @@ PRESET_PROVIDERS = {
     "openai": {
         "name": "OpenAI",
         "icon": "🟢",
-        "base_url": "https://api.openai.com/v1",
+        "base_url": "https://api.openai.com/v1/chat/completions",
         "models": [
             {
                 "id": "gpt-4o",
@@ -258,7 +258,7 @@ PRESET_PROVIDERS = {
     "openrouter": {
         "name": "OpenRouter",
         "icon": "🌉",
-        "base_url": "https://openrouter.ai/api/v1",
+        "base_url": "https://openrouter.ai/api/v1/chat/completions",
         "models": [
             {
                 "id": "openrouter-auto",
