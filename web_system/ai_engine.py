@@ -457,7 +457,7 @@ def generate_section_content_with_ai(
             )
     
     print(f'[DEBUG] 使用模型: {model_config.name} ({model_config.id})')
-    print(f'[DEBUG] 提供商: {model_config.provider}')
+    print(f'[DEBUG] 提供商: {model_config.provider_id}')
     print(f'[DEBUG] API Key 是否为空: {not model_config.api_key}')
     
     # 首次生成时，从需求文档提取初始数据点
