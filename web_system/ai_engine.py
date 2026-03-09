@@ -196,16 +196,28 @@ def call_ai_api(
             'max_tokens': model_config.max_tokens,
             'temperature': model_config.temperature
         }
+        
+        # 智谱 AI GLM-4.7 需要 thinking 参数
+        if model_config.provider_id == "zhipu" and "glm-4" in model_config.model.lower():
+            payload['thinking'] = {"type": "enabled"}
+            # GLM-4.7 支持更大的 max_tokens
+            if model_config.max_tokens > 8000:
+                payload['max_tokens'] = min(model_config.max_tokens, 65536)
     else:
         # 自定义格式（待扩展）
         return f"[API 错误] 不支持的请求格式: {model_config.request_format}"
 
     try:
+        # 智谱 AI GLM-4.7 启用思考模式时需要更长的超时时间
+        timeout = model_config.timeout
+        if model_config.provider_id == "zhipu" and "glm-4" in model_config.model.lower():
+            timeout = max(timeout, 300)  # 至少 5 分钟
+        
         response = requests.post(
             model_config.base_url,
             headers=headers,
             json=payload,
-            timeout=model_config.timeout
+            timeout=timeout
         )
 
         if response.status_code == 200:
