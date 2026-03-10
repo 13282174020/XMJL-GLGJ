@@ -113,9 +113,10 @@ def _extract_ai_response(result: Dict, model_config: ModelConfig) -> str:
     """提取 AI 响应内容
 
     支持多种响应格式：
-    1. 标准 OpenAI 格式：choices.0.message.content（优先返回实际内容）
-    2. 百炼格式：output.text
-    3. reasoning_content（思考过程，不使用，仅用于调试）
+    1. Ollama 原生格式：message.content
+    2. 标准 OpenAI 格式：choices.0.message.content
+    3. 百炼格式：output.text
+    4. reasoning_content（思考过程，不使用，仅用于调试）
 
     重要：不返回 reasoning_content（思考过程），只返回最终的生成内容
 
@@ -126,11 +127,22 @@ def _extract_ai_response(result: Dict, model_config: ModelConfig) -> str:
     Returns:
         提取的响应内容（不包含思考过程）
     """
+    print(f'[DEBUG] API 返回原始数据：{json.dumps(result, ensure_ascii=False)[:500]}...')
+    
+    # Ollama 原生格式：message.content
+    if model_config.provider_id == 'ollama':
+        if 'message' in result and isinstance(result['message'], dict):
+            content = result['message'].get('content', '')
+            if content:
+                print(f'[DEBUG] 从 Ollama message.content 提取成功：{content[:50]}...')
+                return content
+    
     # 首先尝试从配置的 response_path 提取
     content = _extract_value_from_path(result, model_config.response_path)
 
     # 如果提取到了内容且不为空，直接返回
     if content:
+        print(f'[DEBUG] 从 response_path 提取成功：{content[:50]}...')
         return content
 
     # 尝试 output 字段（百炼格式）
@@ -141,7 +153,24 @@ def _extract_ai_response(result: Dict, model_config: ModelConfig) -> str:
     # 对于 GLM-4.7 等启用思考模式的模型，content 是实际生成内容
     content_field = _extract_value_from_path(result, "choices.0.message.content")
     if content_field:
+        print(f'[DEBUG] 从 choices.0.message.content 提取成功：{content_field[:50]}...')
         return content_field
+    
+    # Ollama 兼容：检查是否有 choices 但结构略有不同
+    if "choices" in result and len(result["choices"]) > 0:
+        choice = result["choices"][0]
+        if "message" in choice:
+            msg = choice["message"]
+            if isinstance(msg, dict):
+                # 尝试多个可能的字段名
+                for key in ["content", "text", "response"]:
+                    if key in msg and msg[key]:
+                        print(f'[DEBUG] 从 choices[0].message.{key} 提取成功')
+                        return msg[key]
+    
+    # 尝试直接返回 text 字段（某些 API 直接返回）
+    if "text" in result:
+        return result["text"]
 
     # 注意：不再返回 reasoning_content（思考过程）
     # 如果 content 为空，返回空字符串或错误提示
@@ -151,6 +180,7 @@ def _extract_ai_response(result: Dict, model_config: ModelConfig) -> str:
         # 不返回思考过程，继续向下处理
 
     # 尝试直接返回错误信息（不包含原始 JSON，避免泄露思考过程）
+    print(f'[ERROR] 无法从响应中提取内容，完整响应：{json.dumps(result, ensure_ascii=False)[:1000]}')
     return f"[API 返回格式异常] 无法提取内容，请检查 API 返回格式是否正确"
 
 
@@ -169,7 +199,8 @@ def call_ai_api(
     Returns:
         AI 生成的文本内容
     """
-    if not model_config.api_key:
+    # Ollama 本地模型不需要 API Key
+    if not model_config.api_key and model_config.provider_id != 'ollama':
         return "[API 错误] API Key 未配置"
 
     # 如果 base_url 为空，尝试从厂商配置获取
@@ -183,6 +214,11 @@ def call_ai_api(
             print(f'[DEBUG] 模型 {model_config.id} 的 base_url 为空，使用厂商默认值：{base_url}')
         else:
             return f"[API 错误] base_url 未配置且无法从厂商 {model_config.provider_id} 获取默认值"
+    
+    # Ollama 本地模型使用原生 API 端点
+    if model_config.provider_id == 'ollama' and '/api/chat' not in base_url:
+        base_url = "http://localhost:11434/api/chat"
+        print(f'[DEBUG] Ollama 使用原生 API 端点：{base_url}')
 
     # 构建请求头
     headers = {
@@ -191,7 +227,16 @@ def call_ai_api(
     headers.update(model_config.headers)
     
     # 根据请求格式构建 payload
-    if model_config.request_format == "dashscope":
+    if model_config.provider_id == 'ollama':
+        # Ollama 原生 API 格式
+        payload = {
+            'model': model_config.model,
+            'messages': [
+                {'role': 'user', 'content': prompt}
+            ],
+            'stream': False  # 非流式返回
+        }
+    elif model_config.request_format == "dashscope":
         # 阿里云百炼格式
         headers['Authorization'] = f'Bearer {model_config.api_key}'
         payload = {
@@ -208,7 +253,10 @@ def call_ai_api(
         }
     elif model_config.request_format == "openai":
         # OpenAI 兼容格式
-        headers['Authorization'] = f'Bearer {model_config.api_key}'
+        # Ollama 本地模型不需要 API Key
+        if model_config.provider_id != 'ollama':
+            headers['Authorization'] = f'Bearer {model_config.api_key}'
+
         payload = {
             'model': model_config.model,
             'messages': [
@@ -217,13 +265,30 @@ def call_ai_api(
             'max_tokens': model_config.max_tokens,
             'temperature': model_config.temperature
         }
-        
+
+        # Ollama 专用参数优化（如果使用 OpenAI 兼容接口）
+        if model_config.provider_id == 'ollama':
+            payload.update({
+                'top_p': 0.85,
+                'top_k': 40,
+                'repeat_penalty': 1.15,
+                'stop': ['\n\n\n', '###'],
+                'num_predict': min(model_config.max_tokens, 800)
+            })
+            payload['temperature'] = min(model_config.temperature, 0.5)
+
         # 智谱 AI GLM-4.7 需要 thinking 参数
+        # 注意：GLM-4.7-Flash 等快速模型默认启用 thinking，需要显式禁用
         if model_config.provider_id == "zhipu" and "glm-4" in model_config.model.lower():
-            payload['thinking'] = {"type": "enabled"}
-            # GLM-4.7 支持更大的 max_tokens
-            if model_config.max_tokens > 8000:
-                payload['max_tokens'] = min(model_config.max_tokens, 65536)
+            # GLM-4.7-Flash 默认启用 thinking，需要显式禁用
+            if "flash" in model_config.model.lower():
+                payload['thinking'] = {"type": "disabled"}
+            # 只有非 Flash 版本且 max_tokens 足够大时才启用 thinking
+            elif model_config.max_tokens > 200:
+                payload['thinking'] = {"type": "enabled"}
+                # GLM-4.7 支持更大的 max_tokens
+                if model_config.max_tokens > 8000:
+                    payload['max_tokens'] = min(model_config.max_tokens, 65536)
     else:
         # 自定义格式（待扩展）
         return f"[API 错误] 不支持的请求格式: {model_config.request_format}"
@@ -231,6 +296,10 @@ def call_ai_api(
     try:
         # 使用默认超时时间
         timeout = model_config.timeout
+        
+        print(f'[DEBUG] 发送请求到：{base_url}')
+        print(f'[DEBUG] 请求头：{headers}')
+        print(f'[DEBUG] 请求体：{json.dumps(payload, ensure_ascii=False)[:500]}...')
 
         response = requests.post(
             base_url,
@@ -239,11 +308,15 @@ def call_ai_api(
             timeout=timeout
         )
 
+        print(f'[DEBUG] 响应状态码：{response.status_code}')
+        
         if response.status_code == 200:
             result = response.json()
             # 使用智能提取逻辑
             content = _extract_ai_response(result, model_config)
             if content and not content.startswith('[API'):
+                # 检测并修复重复内容
+                content = detect_and_fix_repetition(content)
                 return content.strip()
             else:
                 return content
@@ -1054,10 +1127,211 @@ def clean_ai_content(content: str, section_title: str) -> str:
     return '\n'.join(cleaned_lines)
 
 
+def detect_and_fix_repetition(content: str, max_repeat: int = 3) -> str:
+    """检测并修复 AI 生成内容中的重复问题
+    
+    Args:
+        content: AI 生成的内容
+        max_repeat: 最大允许重复次数
+        
+    Returns:
+        修复后的内容
+    """
+    if not content:
+        return content
+    
+    lines = content.split('\n')
+    cleaned_lines = []
+    repeat_count = {}
+    
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            cleaned_lines.append(line)
+            continue
+        
+        # 统计每行的重复次数
+        repeat_count[stripped] = repeat_count.get(stripped, 0) + 1
+        
+        # 如果重复次数超过阈值，跳过
+        if repeat_count[stripped] > max_repeat:
+            print(f'[WARN] 检测到重复内容，跳过：{stripped[:50]}... (第{repeat_count[stripped]}次)')
+            continue
+        
+        cleaned_lines.append(line)
+    
+    # 检查是否大部分内容都在重复
+    if len(lines) > 5:
+        unique_ratio = len(set(line.strip() for line in lines if line.strip())) / len([l for l in lines if l.strip()])
+        if unique_ratio < 0.3:  # 唯一内容少于 30%
+            print(f'[WARN] 内容重复度过高 ({unique_ratio:.1%})，可能生成失败')
+            return f"[AI 生成质量异常] 内容重复度过高，请重试或更换模型"
+    
+    return '\n'.join(cleaned_lines)
+
+
 # 测试函数
 if __name__ == '__main__':
     # 简单测试
     test_api_key = 'sk-cc3bee3fa06c4987b52756db0abb7991'
     result = call_bailian_api('你好，请用一句话介绍你自己。', test_api_key)
     print(f'AI 回复：{result}')
+
+
+def get_chapter_content_template(section_title, requirement_content=''):
+    """根据章节标题返回预定义的内容模板
+    优化：区分信息型字段和描述型字段
+
+    信息型字段：简短、具体（如项目名称、总投资等）
+    描述型字段：需要论述、分析（如项目概况、建设必要性等）
+    """
+    # 信息型字段 - 简短、具体
+    info_templates = {
+        '项目名称': '根据需求文档提取的项目名称',
+        '项目建设单位': '根据需求文档提取的建设单位名称',
+        '负责人': 'XXX',
+        '联系方式': '电话：XXX-XXXXXXX',
+        '建设工期': 'XX 个月',
+        '总投资': 'XX 万元',
+        '资金来源': '财政拨款/自筹',
+        '编制单位': 'XX 数字科技有限公司',
+    }
+
+    # 描述型字段 - 需要论述、分析（每段 200-300 字）
+    desc_templates = {
+        '建设目标': '本项目的建设目标是根据实际需求，制定科学合理的建设方案，确保项目顺利实施并达到预期效果。通过本项目的实施，将有效提升相关领域的信息化水平，改善工作效率，优化服务质量，为业务发展提供有力支撑。项目建设遵循统筹规划、分步实施的原则，确保各项建设任务有序推进。',
+        '项目概况': '本项目按照相关规范和要求进行编制，确保符合可行性研究报告的标准。项目立足于当前实际需求，采用先进的技术路线和科学的管理方法，力求在技术先进性、经济合理性和实施可行性之间取得最佳平衡。项目建设内容包括硬件设施、软件系统、数据资源等多个方面。',
+        '项目建设单位概况': '项目建设单位的基本情况介绍，包括单位性质、主要职能、组织架构等内容。单位在相关领域具有丰富的经验和雄厚的技术实力，为本项目的顺利实施提供了坚实保障。单位现有人员配置合理，技术力量充足，能够满足项目建设和运营的需要。',
+        '项目实施机构': '项目实施机构负责项目的具体实施工作，包括项目管理、协调推进、质量控制等职责。机构设置合理，人员配备充足，能够确保项目按计划高质量完成。实施机构建立了完善的管理制度和工作流程，为项目顺利实施提供了组织保障。',
+        '项目建设的必要性': '从政策要求、实际需求、发展趋势等方面论证项目建设的必要性。当前，随着业务的不断发展和信息化水平的提升，现有系统已无法满足日益增长的需求，亟需通过本项目的建设来解决相关问题。项目建设对于提升工作效率、优化服务质量具有重要意义。',
+        '需求分析': '对项目的需求进行全面分析，包括业务需求、功能需求、性能需求等。通过深入调研和分析，明确了项目的核心需求和关键指标，为后续的方案设计提供了重要依据。需求分析结果将为项目建设内容的确定和投资估算提供参考。',
+        '总体思路': '项目建设的总体思路是坚持以需求为导向，以技术为支撑，确保项目建设的科学性和可行性。在实施过程中，注重技术创新与管理创新相结合，力求实现最佳的建设效果。项目建设将充分利用现有资源，避免重复建设，提高投资效益。',
+        '总体框架': '项目总体框架包括架构设计、功能模块、技术路线等核心内容。框架设计遵循先进性、实用性、可扩展性的原则，能够满足当前需求并适应未来发展。总体框架的确定为后续详细设计和技术实现提供了指导。',
+        '技术路线': '项目采用成熟可靠的技术路线，确保系统的稳定性、安全性和可扩展性。在技术选型上，充分考虑了当前技术发展趋势和项目实施风险，选择了最适合的技术方案。技术路线的确定将为项目实施提供技术保障。',
+        '投资估算': '投资估算包括硬件设备、软件开发、系统集成、工程建设等费用。估算依据充分，计算方法科学，能够真实反映项目建设所需的资金投入。投资估算结果为项目资金筹措和使用计划提供了参考依据。',
+        '资金筹措': '项目资金来源明确，筹措方案可行，确保项目顺利实施。资金安排合理，能够满足项目各阶段的资金需求。资金筹措方案的确定为项目顺利实施提供了资金保障。',
+        '效益分析': '项目效益包括经济效益、社会效益、环境效益等多个方面。通过综合分析，项目具有良好的投资回报和显著的社会效益。效益分析结果为项目投资决策提供了重要参考。',
+        '风险分析': '项目风险包括技术风险、管理风险、市场风险等，需制定相应的风险应对措施。通过风险识别和评估，制定了完善的风险管理方案。风险分析和应对措施的制定将为项目顺利实施提供保障。',
+        '结论': '综合各方面分析，项目具备建设的必要性和可行性。项目建设条件成熟，实施方案可行，建议尽快启动实施。结论为项目投资决策提供了科学依据。',
+        '建议': '建议尽快启动项目实施，并做好组织保障、资金保障、技术保障等工作。在实施过程中，要加强项目管理，确保项目按计划高质量完成。同时，要建立健全项目运营维护机制，确保项目长期稳定运行。',
+    }
+
+    # 先精确匹配
+    if section_title in info_templates:
+        return info_templates[section_title]
+    if section_title in desc_templates:
+        return desc_templates[section_title]
+
+    # 再模糊匹配
+    for key, content in info_templates.items():
+        if key in section_title:
+            return content
+    for key, content in desc_templates.items():
+        if key in section_title:
+            return content
+
+    # 默认返回
+    return f'{section_title}的具体内容根据项目实际情况进行编制。'
+
+
+def create_partial_document(task_id, chapters, template_type='future_community'):
+    """
+    根据章节内容创建临时文档（用于编辑后更新）
+    
+    Args:
+        task_id: 任务 ID
+        chapters: 章节列表（包含内容和标题）
+        template_type: 模板类型
+    """
+    from docx import Document
+    from docx.shared import Pt, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.ns import qn
+    import os
+    
+    print(f'[DEBUG] create_partial_document 被调用: task_id={task_id}, chapters={len(chapters)}')
+    
+    # 创建文档
+    doc = Document()
+    
+    # 设置默认样式
+    style = doc.styles['Normal']
+    style.font.name = '仿宋'
+    style.font.size = Pt(16)
+    style._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+    
+    # 添加标题
+    title = doc.add_paragraph()
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title.paragraph_format.space_before = Cm(5)
+    run = title.add_run('文档预览')
+    run.font.name = '黑体'
+    run.font.size = Pt(36)
+    run.font.bold = True
+    run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
+    doc.add_page_break()
+    
+    # 添加目录
+    toc_heading = doc.add_paragraph()
+    toc_heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = toc_heading.add_run('目录')
+    run.font.name = '黑体'
+    run.font.size = Pt(22)
+    run.font.bold = True
+    run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
+    doc.add_paragraph()
+    
+    # 添加目录项
+    for ch in chapters:
+        level = ch.get('level', 1)
+        number = ch.get('number', '')
+        title_text = ch.get('title', '')
+        
+        para = doc.add_paragraph()
+        para.paragraph_format.left_indent = Cm(0.74 * (level - 1))
+        run = para.add_run(f"{number} {title_text}")
+        run.font.name = '仿宋'
+        run.font.size = Pt(16)
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+    
+    doc.add_page_break()
+    
+    # 添加正文内容
+    for ch in chapters:
+        level = ch.get('level', 1)
+        number = ch.get('number', '')
+        title_text = ch.get('title', '')
+        content = ch.get('content', '')
+        
+        # 添加章节标题
+        heading = doc.add_paragraph()
+        run = heading.add_run(f"{number} {title_text}")
+        run.font.name = '黑体'
+        run.font.size = Pt(22 if level == 1 else 16)
+        run.font.bold = True
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
+        
+        # 添加内容（如果有）
+        if content:
+            for para_text in content.split('\n'):
+                if para_text.strip():
+                    para = doc.add_paragraph()
+                    para.paragraph_format.first_line_indent = Cm(0.74)
+                    run = para.add_run(para_text.strip())
+                    run.font.name = '仿宋'
+                    run.font.size = Pt(16)
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+        
+        doc.add_paragraph()  # 章节间距
+    
+    # 保存文档
+    from task_manager import get_task_manager
+    task_manager = get_task_manager()
+    task_dir = task_manager._get_task_directory(task_id)
+    filepath = os.path.join(task_dir, f'partial_{task_id}.docx')
+    
+    doc.save(filepath)
+    print(f'[DEBUG] 临时文档已更新: {filepath}')
+    
+    return filepath
 

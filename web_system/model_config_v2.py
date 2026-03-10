@@ -279,6 +279,58 @@ PRESET_PROVIDERS = {
                 "description": "通过 OpenRouter 调用 DeepSeek R1"
             }
         ]
+    },
+    "ollama": {
+        "name": "Ollama (本地)",
+        "icon": "🦙",
+        "base_url": "http://localhost:11434/v1/chat/completions",
+        "models": [
+            {
+                "id": "ollama-glm-4-7-flash-q4",
+                "name": "GLM-4.7-Flash-Q4 (Ollama)",
+                "type": "text",
+                "model": "modelscope.cn/unsloth/GLM-4.7-Flash-GGUF:Q4_K_M",
+                "max_tokens": 2000,
+                "temperature": 0.7,
+                "description": "Ollama 本地部署的 GLM-4.7-Flash Q4_K_M 量化模型"
+            },
+            {
+                "id": "ollama-glm-4-flash",
+                "name": "GLM-4-Flash (Ollama)",
+                "type": "text",
+                "model": "glm-4-flash",
+                "max_tokens": 2000,
+                "temperature": 0.7,
+                "description": "Ollama 本地部署的 GLM-4-Flash 模型"
+            },
+            {
+                "id": "ollama-glm-4-flash-q4",
+                "name": "GLM-4-Flash-Q4 (Ollama)",
+                "type": "text",
+                "model": "glm-4-flash-q4",
+                "max_tokens": 2000,
+                "temperature": 0.7,
+                "description": "Ollama 本地部署的 GLM-4-Flash Q4 量化模型"
+            },
+            {
+                "id": "ollama-qwen2.5",
+                "name": "Qwen2.5 (Ollama)",
+                "type": "text",
+                "model": "qwen2.5",
+                "max_tokens": 2000,
+                "temperature": 0.7,
+                "description": "Ollama 本地部署的 Qwen2.5 模型"
+            },
+            {
+                "id": "ollama-llama3",
+                "name": "Llama3 (Ollama)",
+                "type": "text",
+                "model": "llama3",
+                "max_tokens": 2000,
+                "temperature": 0.7,
+                "description": "Ollama 本地部署的 Llama3 模型"
+            }
+        ]
     }
 }
 

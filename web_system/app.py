@@ -17,7 +17,7 @@ import threading
 import time
 from enum import Enum
 from functools import wraps
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, make_response
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from datetime import datetime
@@ -34,6 +34,7 @@ from services.requirement_analyzer import RequirementAnalyzer
 from services.quality_reviewer import QualityReviewer
 from model_config import get_model_config_manager, ModelConfig, get_enabled_models, get_model_config
 from task_manager import get_task_manager, TaskInfo, ChapterStatus, MAX_REGENERATE_COUNT
+from ai_engine import get_chapter_content_template
 
 app = Flask(__name__)
 CORS(app)
@@ -1591,63 +1592,6 @@ def render_doc_toc(doc, chapters, styles, level=0):
         if children is not None and len(children) > 0:
             render_doc_toc(doc, children, styles, level + 1)
 
-def get_chapter_content_template(section_title, requirement_content=''):
-    """根据章节标题返回预定义的内容模板
-    优化：区分信息型字段和描述型字段
-    
-    信息型字段：简短、具体（如项目名称、总投资等）
-    描述型字段：需要论述、分析（如项目概况、建设必要性等）
-    """
-    # 信息型字段 - 简��、具体
-    info_templates = {
-        '项目名称': '根据����������������������文档提取的项目名称',
-        '项目建设单位': '根据需求文档提取���建设单位名�������������',
-        '负责人': 'XXX',
-        '联系方式': '电话：XXX-XXXXXXX',
-        '建设工期': 'XX 个月',
-        '总投资': 'XX 万元',
-        '资金来源': '财政拨款/自筹',
-        '编制单位': 'XX 数字科技有限公司',
-    }
-    
-    # 描述型字段 - 需要论述、分析（每段 200-300 字）
-    desc_templates = {
-        '建设目标': '本项目的建设目标是根据实际需求，制定科学合理的建设方案，确保项目顺利实施并达到预期效果。通过本项目的实施，将有效提升相关领域的信息化水平，改善工作效率，优化服务质量，为业务发展提供有力支撑。项目建设遵循统筹规划、分步实施的原则，确保各项建设任务有序推进。',
-        '项目概况': '本项目按照相关规范和要求进行编制，确保符合可行性研究报告的标准。项目立足于当前实际需求，采用先进的技术路线和科学的管理方法，力求在技术先进性、经济合理性和实施可行性之间取得最佳平衡。项目建设内容包括硬件设施、软件系统、数据资源等多个方面。',
-        '项目建设单位概况': '项目建设单位的基本情况介绍，包括单位性质、主要职能、组织架构等内容。单位在相关领域具有丰富的经验和雄厚的技术实力，为本项目的顺利实施提供了坚实保障。单位现有人员配置合理，技术力量充足，能够满足项目建设和运营的需要。',
-        '项目实施机构': '项目实施机构负责项目的具体实施工作，包括项目管理、协调推进、质量控制等职责。机构设置合理，人员配备充足，能够确保项目按计划高质量完成。实施机构建立了完善的管理制度和工作流程，为项目顺利实施提供了组织保障。',
-        '项目建设的必要性': '从政策要求、实际需求、发展趋势等方面论证项目建设的必要性。当前，随着业务的不断发展和信息化水平的提升，现有系统已无法满足日益增长的需求，亟需通过本项目的建设来解决相关问题。项目建设对于提升工作效率、优化服务质量具有重要意义。',
-        '需求分析': '对项目的需求进行全面分析，包括业务需求、功能需求、性能需求等。通过深入调研和分析，明确了项目的核心需求和关键指标，为后续的方案设计提供了重要依据。需求分析结果将为项目建设内容的确定和投资估算提供参考。',
-        '总体思路': '项目建设的总体思路是坚持以需求为导向，以技术为支撑，确保项目建设的科学性和可行性。在实施过程中，注重技术创新与管理创新相结合，力求实现最佳的建设效果。项目建设将充分利用现有资源，避免重复建设，提高投资效益。',
-        '总体框架': '项目总体框架包括架构设计、功能模块、技术路线等核心内容。框架设计遵循先进性、实用性、可扩展性的原则，能够满足当前需求并适应未来发展。总体框架的确定为后续详细设计和技术实现提供了指导。',
-        '技术路线': '项目采用成熟可靠的技术路线，确保系统的稳定性、安全性和可扩展性。在技术选型上，充分考虑了当前技术发展趋势和项目实施风险，选择了最适合的技术方案。技术路线的确定将为项目实施提供技术保障。',
-        '投资估算': '投资估算包括硬件设备、软件开发、系统集成、工程建设等费用。估算依据充分，计算方法科学，能够真实反映项目建设所需的资金投入。投资估算结果为项目资金筹措和使用计划提供了参考依据。',
-        '资金筹措': '项目资金来源明确，筹措方案可行，确保项目顺利实施。资金安排合理，能够满足项目各阶段的资金需求。资金筹措方案的确定为项目顺利实施提供了资金保障。',
-        '效益分析': '项目效益包括经济效益、社会效益、环境效益等多个方面。通过综合分析，项目具有良好的投资回报和显著的社会效益。效益分析结果为项目投资决策提供了重要参考。',
-        '风险分析': '项目风险包括技术风险、管理风险、市场风险等，需制定相应的风险应对措施。通过风险识别和评估，制定了完善的风险管理方案。风险分析和应对措施的制定将为项目顺利实施提供保障。',
-        '结论': '综合各方面分析，项目具备建设的必要性和可行性。项目建设条件成熟，实施方案可行，建议尽快启动实施。结论为项目投资决策提供了科学依据。',
-        '建议': '建议尽快启动项目实施，并做好组织保障、资金保障、技术保障等工作。在实施过程中，要加强项目管理，确保项目按计划高质量完成。同时，要建立健全项目运营维护机制，确保项目长期稳定运行。',
-    }
-    
-    # 先精确匹配
-    if section_title in info_templates:
-        return info_templates[section_title]
-    if section_title in desc_templates:
-        return desc_templates[section_title]
-    
-    # 再模糊匹配
-    for key, content in info_templates.items():
-        if key in section_title:
-            return content
-    for key, content in desc_templates.items():
-        if key in section_title:
-            return content
-    
-    # 默认返回
-    return f'{section_title}的具体内容根据项目实际情况进行编制。'
-
-
-
 def generate_chapter_content(doc, chapter_node, requirement_content, template_content,
                               user_prompt, model_config, styles, depth=0):
     """
@@ -1678,7 +1622,9 @@ def generate_chapter_content(doc, chapter_node, requirement_content, template_co
         section_title = chapter_node['title']
 
         # 判断是否使用 AI 生成
-        if model_config and model_config.api_key:
+        # Ollama 本地模型不需要 API Key
+        has_api_key = model_config and (model_config.api_key or model_config.provider_id == 'ollama')
+        if has_api_key:
             # 调用 AI 生成
             content = generate_section_content_with_ai(
                 section_title=section_title,
@@ -1688,6 +1634,11 @@ def generate_chapter_content(doc, chapter_node, requirement_content, template_co
                 model_config=model_config,
                 fallback_to_template=False  # AI 失败时返回错误，不降级
             )
+            # AI 返回后检查任务是否被取消
+            task_info = task_manager.load_task_info(task_id)
+            if task_info and task_info.status == 'cancelled':
+                print(f'[CANCEL] 任务已取消，停止生成')
+                return
             # 检查是否生成失败
             if content.startswith('[AI 生成失败]'):
                 print(f'[ERROR] 章节生成失败：{section_title}')
@@ -1715,7 +1666,15 @@ def generate_chapter(doc, chapter_title, sections, requirement_content, template
         add_heading(doc, section_title, level=2)
 
         # 使用 AI 生成内容
-        if model_config and model_config.api_key:
+        # Ollama 本地模型不需要 API Key
+        has_api_key = model_config and (model_config.api_key or model_config.provider_id == 'ollama')
+        if has_api_key:
+            # AI 调用前检查取消状态
+            task_info = task_manager.load_task_info(task_id)
+            if task_info and task_info.status == 'cancelled':
+                print(f'[CANCEL] 任务已取消，停止生成')
+                return
+                
             content = generate_section_content_with_ai(
                 section_title=section_title,
                 requirement_text=requirement_content,
@@ -1724,6 +1683,11 @@ def generate_chapter(doc, chapter_title, sections, requirement_content, template
                 model_config=model_config,
                 fallback_to_template=False  # AI 失败时返回错误，不降级
             )
+            # AI 返回后检查取消状态
+            task_info = task_manager.load_task_info(task_id)
+            if task_info and task_info.status == 'cancelled':
+                print(f'[CANCEL] 任务已取消，停止生成')
+                return
             # 检查是否生成失败
             if content.startswith('[AI 生成失败]'):
                 print(f'[ERROR] 章节生成失败：{section_title}')
@@ -2157,28 +2121,48 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
                 if children:
                     collect_chapter_titles(children)
         collect_chapter_titles(user_chapters)
-        
+
         total_chapters = len(all_chapter_titles)
-        chapter_index = 0
 
         def render_chapter_with_status(node, level=1):
             """递归渲染章节，同时更新章节状态"""
-            nonlocal chapter_index
             node_title = node.get('title', '')
             children = node.get('children', [])
+            # 使用节点自身的 index，而不是递增的 chapter_index
+            node_index = node.get('index', 0)
             
+            print(f'[DEBUG] render_chapter_with_status: node_index={node_index}, title="{node_title}", level={level}, hasChildren={len(children) > 0}')
+
+            # 每次递归前检查任务是否被取消
+            task_info = task_manager.load_task_info(task_id)
+            if task_info and task_info.status == 'cancelled':
+                print(f'[CANCEL] 任务已取消，停止生成')
+                return
+
             if children:
                 # 有子节点，递归处理
                 for child in children:
+                    # 每次递归前检查取消状态
+                    task_info = task_manager.load_task_info(task_id)
+                    if task_info and task_info.status == 'cancelled':
+                        return
                     render_chapter_with_status(child, level + 1)
             else:
                 # 叶子节点，更新状态并生成内容
-                task_manager.update_chapter_status(task_id, chapter_index, status='generating')
-                
+                # 生成前检查取消状态
+                task_info = task_manager.load_task_info(task_id)
+                if task_info and task_info.status == 'cancelled':
+                    print(f'[CANCEL] 任务已取消，停止生成')
+                    return
+
+                task_manager.update_chapter_status(task_id, node_index, status='generating')
+
                 add_heading(doc, f"{node.get('number', '')} {node_title}", level=level, styles=styles)
-                
+
                 # 生成内容
-                if model_config and model_config.api_key:
+                # Ollama 本地模型不需要 API Key
+                has_api_key = model_config and (model_config.api_key or model_config.provider_id == 'ollama')
+                if has_api_key:
                     # 判断是否为信息提取类章节
                     if is_info_chapter(node_title):
                         # 从数据点管理器中获取信息（保证与封面一致）
@@ -2204,6 +2188,12 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
                         print(f'[INFO] 信息提取：{node_title} = {content}')
                     else:
                         # 使用 AI 生成内容
+                        # 调用 AI 前检查任务是否被取消
+                        task_info = task_manager.load_task_info(task_id)
+                        if task_info and task_info.status == 'cancelled':
+                            print(f'[CANCEL] 任务已取消，跳过 AI 生成')
+                            return
+                            
                         from ai_engine import generate_section_content_with_ai
                         content = generate_section_content_with_ai(
                             section_title=node_title,
@@ -2213,33 +2203,39 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
                             model_config=model_config,
                             fallback_to_template=False
                         )
-                    
+                        
+                        # AI 返回后检查任务是否被取消
+                        task_info = task_manager.load_task_info(task_id)
+                        if task_info and task_info.status == 'cancelled':
+                            print(f'[CANCEL] 任务已取消，停止生成')
+                            return
+
                     if content.startswith('[AI 生成失败]') or content.startswith('[API'):
                         print(f'[ERROR] 章节生成失败：{node_title}')
                         add_normal_paragraph(doc, f"【生成错误】{content}", styles=styles)
-                        task_manager.update_chapter_status(task_id, chapter_index, status='failed',
+                        task_manager.update_chapter_status(task_id, node_index, status='failed',
                             error_message=content)
                     else:
                         for para_text in content.split('\n'):
                             if para_text.strip():
                                 add_normal_paragraph(doc, para_text.strip(), styles=styles)
-                        task_manager.update_chapter_status(task_id, chapter_index, status='completed',
+                        print(f'[DEBUG] 保存章节内容: node_index={node_index}, title="{node_title}", content_preview="{content[:30]}..."')
+                        task_manager.update_chapter_status(task_id, node_index, status='completed',
                             content=content, word_count=len(content))
                 else:
-                    from ai_engine import get_chapter_content_template
                     content = get_chapter_content_template(node_title)
+                    print(f'[DEBUG] 保存模板章节内容: node_index={node_index}, title="{node_title}", content_preview="{content[:30]}..."')
                     for para_text in content.split('\n'):
                         if para_text.strip():
                             add_normal_paragraph(doc, para_text.strip(), styles=styles)
-                    task_manager.update_chapter_status(task_id, chapter_index, status='completed',
+                    task_manager.update_chapter_status(task_id, node_index, status='completed',
                         content=content, word_count=len(content))
-                
+
                 # 更新进度
-                progress = 15 + int((chapter_index + 1) / total_chapters * 80)
+                progress = 15 + int((node_index + 1) / total_chapters * 80)
                 task_manager.update_task_progress(task_id, progress=progress,
-                    message=f'正在生成第{chapter_index + 1}章：{node_title}')
-                
-                chapter_index += 1
+                    message=f'正在生成第{node_index + 1}章：{node_title}')
+
                 save_partial_document()
 
         # 遍历一级章节
@@ -2483,7 +2479,13 @@ def process_document_async_v3(task_id, template_type, requirement_content, templ
                 
                 print(f'[TEMPLATE] 提取模板章节内容长度：{len(template_section)} 字符')
                 print(f'[TEMPLATE] 文档结构：{len(doc_structure.split(chr(10)))} 章')
-                
+
+                # AI 调用前检查取消状态
+                task_info = task_manager.load_task_info(task_id)
+                if task_info and task_info.status == 'cancelled':
+                    print(f'[CANCEL] 任务已取消，停止生成')
+                    return
+
                 # 生成章节内容
                 content = generate_section_content_with_ai(
                     section_title=chapter_title,
@@ -2494,6 +2496,12 @@ def process_document_async_v3(task_id, template_type, requirement_content, templ
                     fallback_to_template=False
                 )
                 
+                # AI 返回后检查取消状态
+                task_info = task_manager.load_task_info(task_id)
+                if task_info and task_info.status == 'cancelled':
+                    print(f'[CANCEL] 任务已取消，停止生成')
+                    return
+
                 # 检查生成结果
                 if content.startswith('[AI 生成失败]'):
                     raise Exception(content)
@@ -2585,7 +2593,11 @@ def process_document_async_v3(task_id, template_type, requirement_content, templ
 @app.route('/task-monitor')
 def task_monitor():
     """任务监控页面"""
-    return render_template('task_monitor.html')
+    response = make_response(render_template('task_monitor.html'))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 
 @app.route('/')
@@ -2789,7 +2801,8 @@ def generate():
         if not model_config.enabled:
             return jsonify({'success': False, 'message': f'模型 {model_config.name} 已禁用，请前往模型配置管理页面启用'}), 400
 
-        if not model_config.api_key:
+        # Ollama 本地模型不需要 API Key
+        if model_config.provider_id != 'ollama' and not model_config.api_key:
             return jsonify({'success': False, 'message': f'模型 {model_config.name} 的 API Key 未配置，请前往模型配置管理页面配置'}), 400
 
         # 使用新的 v2 任务管理器（支持持久化）
@@ -3559,8 +3572,9 @@ def test_model(model_id):
         config = manager.get_config(model_id)
         if not config:
             return jsonify({'success': False, 'error': '模型不存在'}), 404
-        
-        if not config.api_key:
+
+        # Ollama 本地模型不需要 API Key
+        if config.provider_id != 'ollama' and not config.api_key:
             return jsonify({'success': False, 'error': 'API Key 未配置'}), 400
         
         # 测试调用
@@ -3793,11 +3807,11 @@ def test_model_v2(model_id):
         
         if not model:
             return jsonify({'success': False, 'message': '模型不存在'}), 404
-        
-        # 检查 API Key
-        if not model.api_key:
+
+        # Ollama 本地模型不需要 API Key
+        if model.provider_id != 'ollama' and not model.api_key:
             return jsonify({
-                'success': False, 
+                'success': False,
                 'message': 'API Key 未配置，请先编辑模型配置 API Key'
             }), 400
         
@@ -3820,6 +3834,8 @@ def test_model_v2(model_id):
                 print(f'[DEBUG] 模型 {model.id} 的 base_url 为空，使用厂商默认值：{base_url}')
 
         # 创建临时模型配置用于测试
+        # GLM-4.7-Flash 等模型会输出 reasoning_content，需要更多 token
+        test_max_tokens = 300 if "glm-4.7" in model.model.lower() or "glm-4-7" in model.model.lower() else 100
         temp_config = ModelConfig(
             id=model.id,
             provider_id=model.provider_id,
@@ -3828,7 +3844,7 @@ def test_model_v2(model_id):
             model=model.model,
             api_key=model.api_key,
             base_url=base_url,
-            max_tokens=100,  # 测试时限制输出长度
+            max_tokens=test_max_tokens,  # 测试时限制输出长度
             temperature=model.temperature,
             timeout=model.timeout,
             enabled=model.enabled,
@@ -3928,8 +3944,9 @@ def submit_task_v2():
         
         if not model_config.enabled:
             return jsonify({'success': False, 'message': f'模型 {model_config.name} 已禁用'}), 400
-        
-        if not model_config.api_key:
+
+        # Ollama 本地模型不需要 API Key
+        if model_config.provider_id != 'ollama' and not model_config.api_key:
             return jsonify({'success': False, 'message': f'模型 {model_config.name} 的 API Key 未配置'}), 400
         
         # 创建任务
@@ -4286,7 +4303,13 @@ def regenerate_chapter_v2(task_id, chapter_index):
                 # 提取模板章节内容
                 from ai_engine import extract_template_section
                 template_section = extract_template_section(chapter.title, template_content)
-                
+
+                # AI 调用前检查取消状态
+                task_info_check = task_manager.load_task_info(task_id)
+                if task_info_check and task_info_check.status == 'cancelled':
+                    print(f'[CANCEL] 任务已取消，停止生成')
+                    return
+
                 # 生成内容
                 content = generate_section_content_with_ai(
                     section_title=chapter.title,
@@ -4297,6 +4320,12 @@ def regenerate_chapter_v2(task_id, chapter_index):
                     fallback_to_template=False
                 )
                 
+                # AI 返回后检查取消状态
+                task_info_check = task_manager.load_task_info(task_id)
+                if task_info_check and task_info_check.status == 'cancelled':
+                    print(f'[CANCEL] 任务已取消，停止生成')
+                    return
+
                 if content.startswith('[AI 生成失败]'):
                     raise Exception(content)
                 
@@ -4373,9 +4402,13 @@ def update_chapter_content_v2(task_id, chapter_index):
             if chapters:
                 from ai_engine import create_partial_document
                 task_info = task_manager.load_task_info(task_id)
-                create_partial_document(task_id, chapters, task_info.template_type if task_info else 'future_community')
+                # 将章节对象转换为字典列表
+                chapter_dicts = [ch.to_dict() for ch in chapters]
+                create_partial_document(task_id, chapter_dicts, task_info.template_type if task_info else 'future_community')
         except Exception as e:
             print(f'[WARN] 更新部分文档失败：{e}')
+            import traceback
+            print(f'[WARN] 详细错误：{traceback.format_exc()}')
 
         return jsonify({
             'success': True,

@@ -174,25 +174,26 @@ class TestTaskManager(unittest.TestCase):
         print('\n' + '='*60)
         print('[TEST] 测试获取任务状态')
         print('='*60)
-        
+
         task_id = TestTaskManager.test_task_id
-        
+
         status = self.manager.get_task_status(task_id)
-        
+
         self.assertIsNotNone(status)
         self.assertEqual(status['task_id'], task_id)
         self.assertIn(status['status'], ['pending', 'generating', 'completed', 'partially_completed'])
         print(f'[OK] 任务状态获取成功')
-        
+
         # 验证返回数据结构
         required_fields = [
             'task_id', 'status', 'progress', 'total_chapters',
-            'completed_chapters', 'chapters', 'created_at', 'updated_at'
+            'completed_chapters', 'chapters', 'created_at', 'updated_at',
+            'message', 'output_filename'
         ]
         for field in required_fields:
             self.assertIn(field, status)
-        print(f'[OK] 返回数据结构验证通过')
-        
+        print(f'[OK] 返回数据结构验证通过 - 包含 message 和 output_filename 字段')
+
         # 验证章节状态
         self.assertEqual(len(status['chapters']), 4)
         for chapter in status['chapters']:
@@ -316,7 +317,60 @@ class TestTaskManager(unittest.TestCase):
         print(f'\n[FAILED CHAPTERS]')
         for chapter in failed_chapters:
             print(f'  - 第{chapter.index+1}章：{chapter.error_message}')
-    
+
+    def test_08b_progress_and_message_update(self):
+        """测试 8b: 进度和消息字段更新"""
+        print('\n' + '='*60)
+        print('[TEST] 测试进度和消息字段更新')
+        print('='*60)
+
+        task_id = self.manager.create_task(
+            template_type='future_community',
+            user_prompt='测试进度消息',
+            model='glm-4'
+        )
+
+        self.manager.initialize_chapters(task_id, ['第 1 章', '第 2 章', '第 3 章'])
+
+        # 验证初始 message 字段
+        status = self.manager.get_task_status(task_id)
+        self.assertIn('message', status)
+        print(f'[OK] message 字段存在')
+
+        # 更新进度和消息
+        self.manager.update_task_status(task_id, status='generating', progress=10, message='正在生成第 1 章...')
+        status = self.manager.get_task_status(task_id)
+        self.assertEqual(status['status'], 'generating')
+        self.assertEqual(status['progress'], 10)
+        self.assertEqual(status['message'], '正在生成第 1 章...')
+        print(f'[OK] 进度和消息更新成功：progress={status["progress"]}%, message={status["message"]}')
+
+        # 更新当前章节索引
+        self.manager.update_task_status(task_id, current_chapter_index=0)
+        self.manager.update_chapter_status(task_id, 0, status='generating')
+        status = self.manager.get_task_status(task_id)
+        self.assertEqual(status['current_chapter'], '第 1 章')
+        print(f'[OK] current_chapter 更新成功：{status["current_chapter"]}')
+
+        # 完成第 1 章
+        self.manager.update_chapter_status(task_id, 0, status='completed', content='测试内容', word_count=100)
+        status = self.manager.get_task_status(task_id)
+        self.assertEqual(status['completed_chapters'], 1)
+        self.assertGreater(status['progress'], 0)
+        print(f'[OK] 第 1 章完成，进度={status["progress"]}%')
+
+        # 验证 output_filename 字段
+        self.manager.update_task_status(task_id, output_filename='test_output.docx')
+        status = self.manager.get_task_status(task_id)
+        self.assertEqual(status['output_filename'], 'test_output.docx')
+        print(f'[OK] output_filename 更新成功')
+
+        # 清理
+        import shutil
+        task_dir = self.manager._get_task_directory(task_id)
+        if os.path.exists(task_dir):
+            shutil.rmtree(task_dir)
+
     def test_09_persistence(self):
         """测试 9: 持久化验证"""
         print('\n' + '='*60)
@@ -376,22 +430,124 @@ class TestTaskManagerEdgeCases(unittest.TestCase):
         print('\n' + '='*60)
         print('[TEST] 测试更新不存在的章节')
         print('='*60)
-        
+
         manager = get_task_manager()
         task_id = manager.create_task(template_type='test')
-        
+
         # 尝试更新不存在的章节
         try:
             manager.update_chapter_status(task_id, 999, status='completed')
             print(f'[OK] 更新不存在的章节未抛出异常')
         except Exception as e:
             print(f'[WARN] 更新不存在的章节抛出异常：{e}')
-        
+
         # 清理
         import shutil
         task_dir = manager._get_task_directory(task_id)
         if os.path.exists(task_dir):
             shutil.rmtree(task_dir)
+
+    def test_task_monitor_api_format(self):
+        """测试 10: 任务监控中心 API 数据格式验证"""
+        print('\n' + '='*60)
+        print('[TEST] 测试任务监控中心 API 数据格式')
+        print('='*60)
+
+        manager = get_task_manager()
+        task_id = manager.create_task(
+            template_type='future_community',
+            user_prompt='测试任务监控数据格式',
+            model='qwen-max'
+        )
+
+        # 初始化章节列表
+        chapter_titles = ['第 1 章 项目概况', '第 2 章 建设背景', '第 3 章 建设必要性']
+        manager.initialize_chapters(task_id, chapter_titles)
+
+        # ========== 场景 1: 任务刚开始，所有章节都是 pending ==========
+        print('\n--- 场景 1: 任务刚开始 ---')
+        status = manager.get_task_status(task_id)
+        
+        # 验证返回数据格式
+        self.assertIn('task_id', status)
+        self.assertIn('status', status)
+        self.assertIn('progress', status)
+        self.assertIn('current_chapter', status)
+        self.assertIn('total_chapters', status)
+        self.assertIn('completed_chapters', status)
+        self.assertIn('chapters', status)
+        print(f'[OK] 返回数据格式正确')
+        
+        # 验证字段类型
+        self.assertIsInstance(status['completed_chapters'], int, 'completed_chapters 应该是整数')
+        self.assertIsInstance(status['total_chapters'], int, 'total_chapters 应该是整数')
+        print(f'[OK] completed_chapters 和 total_chapters 类型正确')
+        
+        # 验证初始值
+        self.assertEqual(status['completed_chapters'], 0, '初始完成章节数应为 0')
+        self.assertEqual(status['total_chapters'], 3, '总章节数应为 3')
+        self.assertIsNone(status['current_chapter'], '初始当前章节应为 None')
+        print(f'[OK] 初始值正确：completed={status["completed_chapters"]}, total={status["total_chapters"]}, current={status["current_chapter"]}')
+
+        # ========== 场景 2: 正在生成第 1 章 ==========
+        print('\n--- 场景 2: 正在生成第 1 章 ---')
+        manager.update_task_status(task_id, status='generating', current_chapter_index=0)
+        manager.update_chapter_status(task_id, 0, status='generating')
+        
+        status = manager.get_task_status(task_id)
+        self.assertEqual(status['current_chapter'], '第 1 章 项目概况', '当前章节应该是第 1 章')
+        self.assertEqual(status['completed_chapters'], 0, '完成章节数应为 0')
+        print(f'[OK] 生成中状态正确：current={status["current_chapter"]}, completed={status["completed_chapters"]}')
+
+        # ========== 场景 3: 第 1 章完成，开始生成第 2 章 ==========
+        print('\n--- 场景 3: 第 1 章完成，开始生成第 2 章 ---')
+        manager.update_chapter_status(task_id, 0, status='completed', content='第 1 章内容', word_count=100)
+        manager.update_task_status(task_id, current_chapter_index=1)
+        manager.update_chapter_status(task_id, 1, status='generating')
+        
+        status = manager.get_task_status(task_id)
+        self.assertEqual(status['current_chapter'], '第 2 章 建设背景', '当前章节应该是第 2 章')
+        self.assertEqual(status['completed_chapters'], 1, '完成章节数应为 1')
+        print(f'[OK] 第 1 章完成后状态正确：current={status["current_chapter"]}, completed={status["completed_chapters"]}')
+
+        # ========== 场景 4: 第 2 章完成，开始生成第 3 章 ==========
+        print('\n--- 场景 4: 第 2 章完成，开始生成第 3 章 ---')
+        manager.update_chapter_status(task_id, 1, status='completed', content='第 2 章内容', word_count=200)
+        manager.update_task_status(task_id, current_chapter_index=2)
+        manager.update_chapter_status(task_id, 2, status='generating')
+        
+        status = manager.get_task_status(task_id)
+        self.assertEqual(status['current_chapter'], '第 3 章 建设必要性', '当前章节应该是第 3 章')
+        self.assertEqual(status['completed_chapters'], 2, '完成章节数应为 2')
+        self.assertEqual(status['progress'], 66, '进度应为 66%')
+        print(f'[OK] 第 2 章完成后状态正确：current={status["current_chapter"]}, completed={status["completed_chapters"]}, progress={status["progress"]}%')
+
+        # ========== 场景 5: 所有章节完成 ==========
+        print('\n--- 场景 5: 所有章节完成 ---')
+        manager.update_chapter_status(task_id, 2, status='completed', content='第 3 章内容', word_count=150)
+        
+        status = manager.get_task_status(task_id)
+        self.assertEqual(status['completed_chapters'], 3, '完成章节数应为 3')
+        self.assertEqual(status['total_chapters'], 3, '总章节数应为 3')
+        self.assertEqual(status['status'], 'completed', '任务状态应为 completed')
+        # 所有章节完成后，current_chapter 应该为 None 或最后一章
+        self.assertIn(status['current_chapter'], [None, '第 3 章 建设必要性'], '完成后当前章节应为 None 或最后一章')
+        print(f'[OK] 任务完成状态正确：completed={status["completed_chapters"]}/{status["total_chapters"]}, status={status["status"]}')
+
+        # ========== 场景 6: 验证前端计算公式 ==========
+        print('\n--- 场景 6: 验证前端显示公式 ---')
+        # 前端使用：`${task.completed_chapters}/${task.total_chapters}`
+        # 这应该显示为 "3/3"
+        display_text = f'{status["completed_chapters"]}/{status["total_chapters"]}'
+        self.assertEqual(display_text, '3/3', '前端应显示 "3/3"')
+        print(f'[OK] 前端显示公式验证通过：{display_text}')
+
+        # 清理
+        import shutil
+        task_dir = manager._get_task_directory(task_id)
+        if os.path.exists(task_dir):
+            shutil.rmtree(task_dir)
+        print(f'\n[CLEANUP] 测试数据已清理')
 
 
 if __name__ == '__main__':

@@ -799,6 +799,12 @@
 
         // 更新 UI
         function updateUI(task) {
+            console.log('[DEBUG] updateUI 被调用，任务状态:', task.status);
+            console.log('[DEBUG] 章节数:', task.chapters ? task.chapters.length : 0);
+            if (task.chapters && task.chapters.length > 0) {
+                console.log('[DEBUG] 第一个章节:', JSON.stringify(task.chapters[0], null, 2));
+            }
+            
             // 显示面板
             document.getElementById('emptyState').style.display = 'none';
             document.getElementById('progressPanel').style.display = 'block';
@@ -842,6 +848,7 @@
 
         // 渲染章节树
         function renderChapterTree(chapters) {
+            console.log('[DEBUG] renderChapterTree 被调用，章节数:', chapters ? chapters.length : 0);
             const container = document.getElementById('chapterTreeContainer');
             if (!chapters || chapters.length === 0) {
                 container.innerHTML = '<p style="color:#999;text-align:center;padding:40px;">暂无章节</p>';
@@ -853,22 +860,38 @@
             ul.className = 'chapter-tree';
             container.appendChild(ul);
 
-            // 为每个章节添加扁平索引
-            let flatIndex = 0;
+            // 使用后端返回的 index 作为 flatIndex
+            function setFlatIndex(nodes, depth = 0) {
+                nodes.forEach((chapter, idx) => {
+                    const originalIndex = chapter.index;
+                    chapter.flatIndex = originalIndex;
+                    console.log(`[DEBUG] 设置 flatIndex: depth=${depth}, arrayIdx=${idx}, title="${chapter.title}", originalIndex=${originalIndex}, flatIndex=${chapter.flatIndex}`);
+                    if (chapter.children && chapter.children.length > 0) {
+                        setFlatIndex(chapter.children, depth + 1);
+                    }
+                });
+            }
+            setFlatIndex(chapters);
+
+            // 渲染章节树
             chapters.forEach((chapter, index) => {
-                chapter.flatIndex = flatIndex++;
                 renderChapterItem(chapter, index, 0, ul, chapter.flatIndex);
             });
+            
+            console.log('[DEBUG] 章节树渲染完成');
         }
 
         // 渲染单个章节项
         function renderChapterItem(chapter, index, level, parentElement, flatIndex) {
+            console.log(`[DEBUG] renderChapterItem: title="${chapter.title}", level=${level}, flatIndex=${flatIndex}, hasChildren=${chapter.children && chapter.children.length > 0}`);
+            
             const li = document.createElement('li');
             li.className = 'chapter-item';
 
             const itemContent = document.createElement('div');
             itemContent.className = 'chapter-item-content';
-            if (selectedChapterIndex === index) {
+            // 使用 flatIndex 来判断选中状态
+            if (selectedChapterIndex === flatIndex) {
                 itemContent.classList.add('selected');
             }
 
@@ -878,7 +901,8 @@
 
             // 判断是否有子章节
             const hasChildren = chapter.children && chapter.children.length > 0;
-            const isExpanded = expandedChapters.has(index);
+            // 使用 flatIndex（扁平索引）来管理展开状态
+            const isExpanded = expandedChapters.has(flatIndex);
 
             // 展开/收起按钮
             const toggle = document.createElement('span');
@@ -887,7 +911,7 @@
                 toggle.textContent = isExpanded ? '▼' : '▶';
                 toggle.onclick = (e) => {
                     e.stopPropagation();
-                    toggleChapter(index);
+                    toggleChapter(flatIndex);
                 };
             } else {
                 toggle.textContent = '•';
@@ -924,6 +948,7 @@
             // 点击选中章节
             itemContent.onclick = (e) => {
                 e.stopPropagation();
+                console.log(`[DEBUG] 点击章节: title="${chapter.title}", flatIndex=${flatIndex}, contentPreview="${(chapter.content || '').substring(0, 50)}..."`);
                 selectChapter(chapter, flatIndex);
             };
 
@@ -942,7 +967,8 @@
                 const childUl = document.createElement('ul');
                 if (chapter.children) {
                     chapter.children.forEach((child, childIndex) => {
-                        renderChapterItem(child, childIndex, level + 1, childUl, flatIndex);
+                        // 传递子章节自己的 flatIndex，而不是父章节的
+                        renderChapterItem(child, childIndex, level + 1, childUl, child.flatIndex);
                     });
                 }
                 li.appendChild(childUl);
@@ -964,6 +990,7 @@
 
         // 切换章节展开/收起
         function toggleChapter(index) {
+            // index 是当前层级的索引，用于展开/收起状态
             if (expandedChapters.has(index)) {
                 expandedChapters.delete(index);
             } else {
@@ -973,11 +1000,12 @@
         }
 
         // 选中章节
-        function selectChapter(chapter, index) {
-            selectedChapterIndex = index;
+        function selectChapter(chapter, flatIndex) {
+            console.log(`[DEBUG] selectChapter 被调用: title="${chapter.title}", flatIndex=${flatIndex}, contentPreview="${(chapter.content || '').substring(0, 50)}..."`);
+            selectedChapterIndex = flatIndex;  // 使用 flatIndex 而不是层级索引
             currentPreviewChapter = chapter;
-            
-            // 更新选中状态
+
+            // 更新选中状态 - 根据 flatIndex 匹配
             document.querySelectorAll('.chapter-item-content').forEach(el => {
                 el.classList.remove('selected');
             });
@@ -991,6 +1019,7 @@
 
         // 显示预览
         function showPreview(chapter) {
+            console.log(`[DEBUG] showPreview 被调用: title="${chapter.title}", status=${chapter.status}, hasContent=${!!chapter.content}, contentLength=${(chapter.content || '').length}`);
             const previewContent = document.getElementById('previewContent');
             const previewTitle = document.getElementById('previewTitle');
             const previewActions = document.getElementById('previewActions');
@@ -1018,6 +1047,7 @@
             }
 
             if (chapter.status === 'completed' && chapter.content) {
+                console.log(`[DEBUG] 显示已完成章节内容，内容长度: ${chapter.content.length}`);
                 previewContent.innerHTML = '';
                 const contentDiv = document.createElement('div');
                 contentDiv.style.whiteSpace = 'pre-wrap';
