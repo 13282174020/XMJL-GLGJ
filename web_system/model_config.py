@@ -22,6 +22,7 @@ class ModelProvider(Enum):
     MINIMAX = "minimax"          # MiniMax
     OPENAI = "openai"            # OpenAI
     DEEPSEEK = "deepseek"        # DeepSeek (深度求索)
+    OLLAMA = "ollama"            # Ollama 本地部署
     CUSTOM = "custom"            # 自定义
 
 

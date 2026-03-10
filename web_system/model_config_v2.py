@@ -283,7 +283,7 @@ PRESET_PROVIDERS = {
     "ollama": {
         "name": "Ollama (本地)",
         "icon": "🦙",
-        "base_url": "http://localhost:11434/v1/chat/completions",
+        "base_url": "http://localhost:11434/api/chat",
         "models": [
             {
                 "id": "ollama-glm-4-7-flash-q4",
@@ -320,6 +320,15 @@ PRESET_PROVIDERS = {
                 "max_tokens": 2000,
                 "temperature": 0.7,
                 "description": "Ollama 本地部署的 Qwen2.5 模型"
+            },
+            {
+                "id": "ollama-deepseek-r1-14b",
+                "name": "DeepSeek-R1-14B (Ollama)",
+                "type": "text",
+                "model": "modelscope.cn/unsloth/DeepSeek-R1-Distill-Qwen-14B-GGUF:Q4_K_M",
+                "max_tokens": 4000,
+                "temperature": 0.7,
+                "description": "Ollama 本地部署的 DeepSeek-R1-Distill-Qwen-14B-GGUF Q4_K_M 量化模型"
             },
             {
                 "id": "ollama-llama3",
@@ -407,6 +416,17 @@ class ModelConfigManagerV2:
         for provider_id, provider_data in PRESET_PROVIDERS.items():
             models = []
             for model_data in provider_data['models']:
+                # 根据提供商确定请求格式
+                if provider_id == 'dashscope':
+                    request_format = 'dashscope'
+                    response_path = 'output.text'
+                elif provider_id == 'ollama':
+                    request_format = 'ollama'
+                    response_path = 'message.content'
+                else:
+                    request_format = 'openai'
+                    response_path = 'choices.0.message.content'
+                
                 model = ModelConfig(
                     id=model_data['id'],
                     provider_id=provider_id,
@@ -417,8 +437,8 @@ class ModelConfigManagerV2:
                     temperature=model_data['temperature'],
                     description=model_data['description'],
                     base_url=provider_data.get('base_url', ''),  # 使用厂商的 base_url
-                    request_format='openai' if provider_id != 'dashscope' else 'dashscope',
-                    response_path='choices.0.message.content' if provider_id != 'dashscope' else 'output.text'
+                    request_format=request_format,
+                    response_path=response_path
                 )
                 models.append(model)
             

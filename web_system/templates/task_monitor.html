@@ -799,12 +799,6 @@
 
         // 更新 UI
         function updateUI(task) {
-            console.log('[DEBUG] updateUI 被调用，任务状态:', task.status);
-            console.log('[DEBUG] 章节数:', task.chapters ? task.chapters.length : 0);
-            if (task.chapters && task.chapters.length > 0) {
-                console.log('[DEBUG] 第一个章节:', JSON.stringify(task.chapters[0], null, 2));
-            }
-            
             // 显示面板
             document.getElementById('emptyState').style.display = 'none';
             document.getElementById('progressPanel').style.display = 'block';
@@ -830,9 +824,11 @@
             if (task.status === 'paused') {
                 pauseBtn.textContent = '▶️ 继续';
                 pauseBtn.className = 'btn btn-success';
+                isPaused = true;  // 同步状态
             } else {
                 pauseBtn.textContent = '⏸️ 暂停';
                 pauseBtn.className = 'btn btn-warning';
+                isPaused = false;  // 同步状态
             }
 
             // 更新章节树
@@ -848,7 +844,6 @@
 
         // 渲染章节树
         function renderChapterTree(chapters) {
-            console.log('[DEBUG] renderChapterTree 被调用，章节数:', chapters ? chapters.length : 0);
             const container = document.getElementById('chapterTreeContainer');
             if (!chapters || chapters.length === 0) {
                 container.innerHTML = '<p style="color:#999;text-align:center;padding:40px;">暂无章节</p>';
@@ -865,7 +860,6 @@
                 nodes.forEach((chapter, idx) => {
                     const originalIndex = chapter.index;
                     chapter.flatIndex = originalIndex;
-                    console.log(`[DEBUG] 设置 flatIndex: depth=${depth}, arrayIdx=${idx}, title="${chapter.title}", originalIndex=${originalIndex}, flatIndex=${chapter.flatIndex}`);
                     if (chapter.children && chapter.children.length > 0) {
                         setFlatIndex(chapter.children, depth + 1);
                     }
@@ -877,13 +871,10 @@
             chapters.forEach((chapter, index) => {
                 renderChapterItem(chapter, index, 0, ul, chapter.flatIndex);
             });
-            
-            console.log('[DEBUG] 章节树渲染完成');
         }
 
         // 渲染单个章节项
         function renderChapterItem(chapter, index, level, parentElement, flatIndex) {
-            console.log(`[DEBUG] renderChapterItem: title="${chapter.title}", level=${level}, flatIndex=${flatIndex}, hasChildren=${chapter.children && chapter.children.length > 0}`);
             
             const li = document.createElement('li');
             li.className = 'chapter-item';
@@ -948,7 +939,6 @@
             // 点击选中章节
             itemContent.onclick = (e) => {
                 e.stopPropagation();
-                console.log(`[DEBUG] 点击章节: title="${chapter.title}", flatIndex=${flatIndex}, contentPreview="${(chapter.content || '').substring(0, 50)}..."`);
                 selectChapter(chapter, flatIndex);
             };
 
@@ -1001,7 +991,6 @@
 
         // 选中章节
         function selectChapter(chapter, flatIndex) {
-            console.log(`[DEBUG] selectChapter 被调用: title="${chapter.title}", flatIndex=${flatIndex}, contentPreview="${(chapter.content || '').substring(0, 50)}..."`);
             selectedChapterIndex = flatIndex;  // 使用 flatIndex 而不是层级索引
             currentPreviewChapter = chapter;
 
@@ -1019,7 +1008,6 @@
 
         // 显示预览
         function showPreview(chapter) {
-            console.log(`[DEBUG] showPreview 被调用: title="${chapter.title}", status=${chapter.status}, hasContent=${!!chapter.content}, contentLength=${(chapter.content || '').length}`);
             const previewContent = document.getElementById('previewContent');
             const previewTitle = document.getElementById('previewTitle');
             const previewActions = document.getElementById('previewActions');
@@ -1047,7 +1035,6 @@
             }
 
             if (chapter.status === 'completed' && chapter.content) {
-                console.log(`[DEBUG] 显示已完成章节内容，内容长度: ${chapter.content.length}`);
                 previewContent.innerHTML = '';
                 const contentDiv = document.createElement('div');
                 contentDiv.style.whiteSpace = 'pre-wrap';
@@ -1084,14 +1071,37 @@
             isEditMode = true;
             const previewContent = document.getElementById('previewContent');
 
+            // 创建编辑容器
+            const editContainer = document.createElement('div');
+            editContainer.style.display = 'flex';
+            editContainer.style.flexDirection = 'column';
+            editContainer.style.height = '100%';
+            
+            // 创建 AI 二次生成开关
+            const aiToggleDiv = document.createElement('div');
+            aiToggleDiv.style.cssText = 'margin-bottom: 10px; padding: 10px; background: #f0f7ff; border-radius: 6px; border: 1px solid #2196f3;';
+            aiToggleDiv.innerHTML = `
+                <label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">
+                    <input type="checkbox" id="aiRegenerateToggle" style="margin-right: 8px; width: 18px; height: 18px;">
+                    <span style="font-weight: bold; color: #1976d2;">🤖 使用 AI 基于当前内容二次生成</span>
+                </label>
+                <div style="font-size: 12px; color: #666; margin-top: 4px; margin-left: 26px;">
+                    开启后，AI 会根据您编辑的内容进行优化和扩展（会覆盖当前编辑）
+                </div>
+            `;
+            
             // 创建 textarea
             const textarea = document.createElement('textarea');
             textarea.className = 'edit-textarea';
             textarea.id = 'editTextarea';
             textarea.value = originalContent;
+            textarea.style.flex = '1';
+
+            editContainer.appendChild(aiToggleDiv);
+            editContainer.appendChild(textarea);
 
             previewContent.innerHTML = '';
-            previewContent.appendChild(textarea);
+            previewContent.appendChild(editContainer);
             previewContent.classList.add('editing');
 
             updateEditUI();
@@ -1121,11 +1131,50 @@
                 return;
             }
 
+            // 获取 AI 二次生成开关状态
+            const aiToggle = document.getElementById('aiRegenerateToggle');
+            const aiRegenerate = aiToggle && aiToggle.checked;
+
             // 获取章节的扁平索引（用于 API 调用）
-            const flatIndex = currentPreviewChapter.flatIndex !== undefined 
-                ? currentPreviewChapter.flatIndex 
+            const flatIndex = currentPreviewChapter.flatIndex !== undefined
+                ? currentPreviewChapter.flatIndex
                 : currentPreviewChapter.index;
 
+            // 如果开启了 AI 二次生成，先调用 AI 生成
+            if (aiRegenerate) {
+                showNotification('正在使用 AI 二次生成，请稍候...', 'info');
+                try {
+                    const aiResponse = await fetch(`/api/v2/task/${currentTaskId}/chapters/${flatIndex}/regenerate`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            user_instruction: `基于以下内容进行优化和扩展：\n\n${newContent}`,
+                            based_on_content: newContent
+                        })
+                    });
+                    
+                    const aiData = await aiResponse.json();
+                    if (aiData.success) {
+                        showNotification('AI 二次生成成功，内容已保存', 'success');
+                        isEditMode = false;
+                        updateEditUI();
+                        // 刷新章节列表
+                        setTimeout(fetchTaskStatus, 500);
+                        return;
+                    } else {
+                        showNotification('AI 二次生成失败：' + aiData.message, 'error');
+                        return;
+                    }
+                } catch (error) {
+                    console.error('AI 二次生成失败:', error);
+                    showNotification('AI 二次生成失败：' + error.message, 'error');
+                    return;
+                }
+            }
+
+            // 普通保存（不调用 AI）
             try {
                 const response = await fetch(`/api/v2/task/${currentTaskId}/chapters/${flatIndex}/content`, {
                     method: 'PUT',
@@ -1249,7 +1298,18 @@
         async function togglePause() {
             if (!currentTaskId) return;
 
+            // 先切换状态
             isPaused = !isPaused;
+            
+            // 立即更新按钮 UI
+            const pauseBtn = document.getElementById('pauseBtn');
+            if (isPaused) {
+                pauseBtn.textContent = '▶️ 继续';
+                pauseBtn.className = 'btn btn-success';
+            } else {
+                pauseBtn.textContent = '⏸️ 暂停';
+                pauseBtn.className = 'btn btn-warning';
+            }
 
             try {
                 const endpoint = isPaused ? 'pause' : 'continue';
@@ -1266,12 +1326,28 @@
                     }
                 } else {
                     showNotification('操作失败：' + data.message, 'error');
-                    isPaused = !isPaused; // 恢复状态
+                    // 恢复状态
+                    isPaused = !isPaused;
+                    updatePauseButtonUI();
                 }
             } catch (error) {
                 console.error('操作失败:', error);
                 showNotification('网络错误', 'error');
-                isPaused = !isPaused; // 恢复状态
+                // 恢复状态
+                isPaused = !isPaused;
+                updatePauseButtonUI();
+            }
+        }
+        
+        // 更新暂停按钮 UI
+        function updatePauseButtonUI() {
+            const pauseBtn = document.getElementById('pauseBtn');
+            if (isPaused) {
+                pauseBtn.textContent = '▶️ 继续';
+                pauseBtn.className = 'btn btn-success';
+            } else {
+                pauseBtn.textContent = '⏸️ 暂停';
+                pauseBtn.className = 'btn btn-warning';
             }
         }
 

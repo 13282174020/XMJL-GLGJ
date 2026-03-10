@@ -25,6 +25,7 @@ from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 import re
 import base64
 
@@ -1412,6 +1413,49 @@ def add_normal_paragraph(doc, text, indent=True, styles=None):
     return para
 
 
+def add_toc(doc, styles=None):
+    """添加自动目录（TOC）- 使用 Word 域代码"""
+    if styles is None:
+        styles = load_style_config()
+    
+    # 添加目录标题
+    toc_title = doc.add_paragraph()
+    toc_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = toc_title.add_run('目  录')
+    run.font.name = '黑体'
+    run.font.size = Pt(22)
+    run.font.bold = True
+    run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
+    
+    # 添加空行
+    doc.add_paragraph()
+    
+    # 添加 TOC 域
+    # 使用 Word 的 TOC 域代码：\o "1-3" 表示包含 1-3 级标题
+    paragraph = doc.add_paragraph()
+    
+    # 创建 TOC 域的开始标记
+    run = paragraph.add_run()
+    fldChar = OxmlElement('w:fldChar')
+    fldChar.set(qn('w:fldCharType'), 'begin')
+    run._r.append(fldChar)
+    
+    # 添加域代码指令
+    run = paragraph.add_run()
+    instrText = OxmlElement('w:instrText')
+    instrText.text = 'TOC \\o "1-3" \\h \\z \\u'  # 1-3级标题，带超链接，隐藏页码（临时）
+    run._r.append(instrText)
+    
+    # 创建 TOC 域的结束标记
+    run = paragraph.add_run()
+    fldChar = OxmlElement('w:fldChar')
+    fldChar.set(qn('w:fldCharType'), 'end')
+    run._r.append(fldChar)
+    
+    # 添加分页符
+    doc.add_page_break()
+
+
 def generate_word_document(template_type, requirement_content, template_content, user_prompt, api_key, output_path, progress_callback=None, model='qwen-max'):
     """生成 Word 文档（AI 增强版）- 使用用户配置的目录结构"""
 
@@ -2092,20 +2136,8 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
         add_heading(doc, '项目编审人员名单', level=1, styles=styles)
         doc.add_page_break()
 
-        # 目录 - 使用保存的目录配置
-        add_heading(doc, '目录', level=1, styles=styles)
-        
-        def render_toc(nodes, level=0):
-            for node in nodes:
-                para = doc.add_paragraph()
-                para.paragraph_format.left_indent = Cm(0.74 * level)
-                run = para.add_run(f"{node.get('number', '')} {node.get('title', '')}")
-                children = node.get('children')
-                if children is not None and len(children) > 0:
-                    render_toc(children, level + 1)
-        
-        render_toc(user_chapters)
-        doc.add_page_break()
+        # 目录 - 使用自动目录（TOC 域）
+        add_toc(doc, styles=styles)
 
         doc_container['doc'] = doc
         save_partial_document()
@@ -2130,14 +2162,25 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
             children = node.get('children', [])
             # 使用节点自身的 index，而不是递增的 chapter_index
             node_index = node.get('index', 0)
-            
-            print(f'[DEBUG] render_chapter_with_status: node_index={node_index}, title="{node_title}", level={level}, hasChildren={len(children) > 0}')
 
-            # 每次递归前检查任务是否被取消
+            # 每次递归前检查任务是否被取消或暂停
             task_info = task_manager.load_task_info(task_id)
             if task_info and task_info.status == 'cancelled':
                 print(f'[CANCEL] 任务已取消，停止生成')
                 return
+            
+            # 检查是否暂停
+            if task_info and task_info.status == 'paused':
+                print(f'[PAUSE] 任务已暂停，等待继续...')
+                while True:
+                    time.sleep(2)
+                    task_info = task_manager.load_task_info(task_id)
+                    if task_info.status == 'cancelled':
+                        print(f'[CANCEL] 任务已取消，停止生成')
+                        return
+                    if task_info.status != 'paused':
+                        print(f'[RESUME] 任务已恢复')
+                        break
 
             if children:
                 # 有子节点，递归处理
@@ -2148,6 +2191,19 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
                         return
                     render_chapter_with_status(child, level + 1)
             else:
+                # 叶子节点，检查是否已完成（避免覆盖用户编辑）
+                chapters = task_manager.load_chapters(task_id)
+                if node_index < len(chapters):
+                    existing_chapter = chapters[node_index]
+                    if existing_chapter.status == 'completed' and existing_chapter.content:
+                        # 已经有内容且完成，跳过重新生成，直接使用已有内容
+                        print(f'[INFO] 章节 {node_index} "{node_title}" 已完成，跳过重新生成')
+                        add_heading(doc, f"{node.get('number', '')} {node_title}", level=level, styles=styles)
+                        for para_text in existing_chapter.content.split('\n'):
+                            if para_text.strip():
+                                add_normal_paragraph(doc, para_text.strip(), styles=styles)
+                        return
+                
                 # 叶子节点，更新状态并生成内容
                 # 生成前检查取消状态
                 task_info = task_manager.load_task_info(task_id)
@@ -2219,12 +2275,10 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
                         for para_text in content.split('\n'):
                             if para_text.strip():
                                 add_normal_paragraph(doc, para_text.strip(), styles=styles)
-                        print(f'[DEBUG] 保存章节内容: node_index={node_index}, title="{node_title}", content_preview="{content[:30]}..."')
                         task_manager.update_chapter_status(task_id, node_index, status='completed',
                             content=content, word_count=len(content))
                 else:
                     content = get_chapter_content_template(node_title)
-                    print(f'[DEBUG] 保存模板章节内容: node_index={node_index}, title="{node_title}", content_preview="{content[:30]}..."')
                     for para_text in content.split('\n'):
                         if para_text.strip():
                             add_normal_paragraph(doc, para_text.strip(), styles=styles)
@@ -4236,73 +4290,88 @@ def download_final_v2(task_id):
 def regenerate_chapter_v2(task_id, chapter_index):
     """
     重新生成章节（带用户补充需求）
-    
+
     请求体:
     {
-        "user_instruction": "请结合回迁小区的特点，重点说明..."
+        "user_instruction": "请结合回迁小区的特点，重点说明...",
+        "based_on_content": "用户编辑的内容（可选）"
     }
     """
     try:
         from task_manager import get_task_manager, MAX_REGENERATE_COUNT
-        
+
         task_manager = get_task_manager()
-        
+
         # 检查是否可以重新生成
         if not task_manager.can_regenerate(task_id, chapter_index):
             return jsonify({
                 'success': False,
                 'message': f'该章节已重新生成{MAX_REGENERATE_COUNT}次，达到上限'
             }), 400
-        
+
         data = request.get_json()
         user_instruction = data.get('user_instruction', '')
-        
+        based_on_content = data.get('based_on_content', '')  # 用户编辑的内容
+
         # 获取任务信息
         task_info = task_manager.load_task_info(task_id)
         chapters = task_manager.load_chapters(task_id)
-        
+
         if not task_info or not chapters:
             return jsonify({'success': False, 'message': '任务不存在'}), 404
-        
+
         if chapter_index >= len(chapters):
             return jsonify({'success': False, 'message': '章节不存在'}), 404
-        
+
         chapter = chapters[chapter_index]
-        
+
         # 读取文件内容
         requirement_content = ''
         template_content = ''
-        
+
         if task_info.requirement_filename:
             req_path = task_manager.get_file_path(task_id, f'requirement.{task_info.requirement_filename.rsplit(".", 1)[-1]}')
             if req_path and task_info.requirement_filename.endswith('.docx'):
                 requirement_content = read_docx_text(req_path)
             elif req_path and task_info.requirement_filename.endswith('.txt'):
                 requirement_content = read_txt_text(req_path)
-        
+
         if task_info.template_filename:
             tmpl_path = task_manager.get_file_path(task_id, f'template.{task_info.template_filename.rsplit(".", 1)[-1]}')
             if tmpl_path and task_info.template_filename.endswith('.docx'):
                 template_content = read_docx_text(tmpl_path)
             elif tmpl_path and task_info.template_filename.endswith('.txt'):
                 template_content = read_txt_text(tmpl_path)
-        
+
         # 获取模型配置
         model_config = get_model_config(task_info.model)
         if not model_config:
             return jsonify({'success': False, 'message': '模型配置不存在'}), 404
-        
+
         # 异步重新生成
         def regenerate_async():
             from ai_engine import generate_section_content_with_ai
-            
+
             # 更新章节状态
             task_manager.update_chapter_status(task_id, chapter_index, status='generating')
-            
+
             try:
                 # 提取模板章节内容
                 from ai_engine import extract_template_section
                 template_section = extract_template_section(chapter.title, template_content)
+
+                # 构建提示词：如果有 based_on_content，则基于它进行优化
+                final_instruction = user_instruction
+                if based_on_content:
+                    final_instruction = f"""请基于以下用户编辑的内容进行优化和扩展，保持核心信息不变，但提升表达质量：
+
+用户编辑的内容：
+{based_on_content}
+
+用户额外要求：
+{user_instruction}
+
+请生成优化后的内容："""
 
                 # AI 调用前检查取消状态
                 task_info_check = task_manager.load_task_info(task_id)
@@ -4315,11 +4384,11 @@ def regenerate_chapter_v2(task_id, chapter_index):
                     section_title=chapter.title,
                     requirement_text=requirement_content,
                     template_text=template_section,
-                    user_instruction=user_instruction,
+                    user_instruction=final_instruction,
                     model_config=model_config,
                     fallback_to_template=False
                 )
-                
+
                 # AI 返回后检查取消状态
                 task_info_check = task_manager.load_task_info(task_id)
                 if task_info_check and task_info_check.status == 'cancelled':
@@ -4328,7 +4397,7 @@ def regenerate_chapter_v2(task_id, chapter_index):
 
                 if content.startswith('[AI 生成失败]'):
                     raise Exception(content)
-                
+
                 # 更新章节状态
                 task_manager.update_chapter_status(
                     task_id, chapter_index,
@@ -4338,26 +4407,33 @@ def regenerate_chapter_v2(task_id, chapter_index):
                     regenerated_count=chapter.regenerated_count + 1,
                     last_user_instruction=user_instruction
                 )
-                
+
                 # 更新临时文档
-                # TODO: 需要实现更新临时文档的逻辑
-                
+                try:
+                    chapters_updated = task_manager.load_chapters(task_id)
+                    if chapters_updated:
+                        from ai_engine import create_partial_document
+                        chapter_dicts = [ch.to_dict() for ch in chapters_updated]
+                        create_partial_document(task_id, chapter_dicts, task_info.template_type if task_info else 'future_community')
+                except Exception as e:
+                    print(f'[WARN] 更新临时文档失败：{e}')
+
             except Exception as e:
                 task_manager.update_chapter_status(
                     task_id, chapter_index,
                     status='failed',
                     error_message=str(e)
                 )
-        
+
         thread = threading.Thread(target=regenerate_async)
         thread.daemon = True
         thread.start()
-        
+
         return jsonify({
             'success': True,
             'message': '正在重新生成章节'
         })
-        
+
     except Exception as e:
         import traceback
         return jsonify({

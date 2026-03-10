@@ -231,11 +231,10 @@ class TaskManager:
             for node in nodes:
                 level = node.get('level', parent_level + 1)
                 title = node.get('title', '')
-                
+
                 # 给节点添加 index 字段，用于后续生成内容时定位
                 node['index'] = index
-                
-                print(f'[DEBUG] 初始化章节: index={index}, title="{title}", level={level}')
+
                 chapters.append(ChapterStatus(
                     index=index,
                     title=title,
@@ -268,10 +267,6 @@ class TaskManager:
             return
 
         chapter = chapters[chapter_index]
-        
-        # 调试日志
-        content_preview = (kwargs.get('content', '') or '')[:30].replace('\n', ' ')
-        print(f'[DEBUG] 更新章节状态: task_id={task_id}, chapter_index={chapter_index}, title="{chapter.title}", status={kwargs.get("status")}, content_preview="{content_preview}..."')
 
         for key, value in kwargs.items():
             if hasattr(chapter, key):
@@ -352,16 +347,6 @@ class TaskManager:
 
         # 将扁平章节转换为树形结构
         chapter_tree = self._build_chapter_tree(chapters)
-
-        # 调试：打印返回给前端的章节数据
-        print(f'[DEBUG] 返回给前端的章节数据:')
-        def print_tree_debug(nodes, indent=0):
-            for node in nodes:
-                content_preview = (node.get('content', '') or '')[:30].replace('\n', ' ')
-                print(f'[DEBUG]   {"  " * indent}[index={node.get("index")}] {node.get("title")} - status={node.get("status")} - content="{content_preview}..."')
-                if node.get('children'):
-                    print_tree_debug(node['children'], indent + 1)
-        print_tree_debug(chapter_tree)
 
         return {
             'task_id': task_info.task_id,

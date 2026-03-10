@@ -289,6 +289,23 @@ def call_ai_api(
                 # GLM-4.7 支持更大的 max_tokens
                 if model_config.max_tokens > 8000:
                     payload['max_tokens'] = min(model_config.max_tokens, 65536)
+    elif model_config.request_format == "ollama":
+        # Ollama 原生格式
+        payload = {
+            'model': model_config.model,
+            'messages': [
+                {'role': 'user', 'content': prompt}
+            ],
+            'stream': False,
+            'options': {
+                'temperature': model_config.temperature,
+                'num_predict': model_config.max_tokens,
+                'top_p': 0.85,
+                'top_k': 40,
+                'repeat_penalty': 1.15,
+                'stop': ['\n\n\n', '###']
+            }
+        }
     else:
         # 自定义格式（待扩展）
         return f"[API 错误] 不支持的请求格式: {model_config.request_format}"
@@ -1247,19 +1264,20 @@ def create_partial_document(task_id, chapters, template_type='future_community')
     from docx.shared import Pt, Cm
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
     import os
-    
+
     print(f'[DEBUG] create_partial_document 被调用: task_id={task_id}, chapters={len(chapters)}')
-    
+
     # 创建文档
     doc = Document()
-    
+
     # 设置默认样式
     style = doc.styles['Normal']
     style.font.name = '仿宋'
     style.font.size = Pt(16)
     style._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
-    
+
     # 添加标题
     title = doc.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1270,46 +1288,63 @@ def create_partial_document(task_id, chapters, template_type='future_community')
     run.font.bold = True
     run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
     doc.add_page_break()
-    
-    # 添加目录
-    toc_heading = doc.add_paragraph()
-    toc_heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = toc_heading.add_run('目录')
+
+    # 添加自动目录（TOC 域）
+    toc_title = doc.add_paragraph()
+    toc_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = toc_title.add_run('目  录')
     run.font.name = '黑体'
     run.font.size = Pt(22)
     run.font.bold = True
     run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
     doc.add_paragraph()
     
-    # 添加目录项
-    for ch in chapters:
-        level = ch.get('level', 1)
-        number = ch.get('number', '')
-        title_text = ch.get('title', '')
-        
-        para = doc.add_paragraph()
-        para.paragraph_format.left_indent = Cm(0.74 * (level - 1))
-        run = para.add_run(f"{number} {title_text}")
-        run.font.name = '仿宋'
-        run.font.size = Pt(16)
-        run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋')
+    # 添加 TOC 域
+    paragraph = doc.add_paragraph()
+    run = paragraph.add_run()
+    fldChar = OxmlElement('w:fldChar')
+    fldChar.set(qn('w:fldCharType'), 'begin')
+    run._r.append(fldChar)
+    
+    run = paragraph.add_run()
+    instrText = OxmlElement('w:instrText')
+    instrText.text = 'TOC \\o "1-3" \\h \\z \\u'
+    run._r.append(instrText)
+    
+    run = paragraph.add_run()
+    fldChar = OxmlElement('w:fldChar')
+    fldChar.set(qn('w:fldCharType'), 'end')
+    run._r.append(fldChar)
     
     doc.add_page_break()
-    
+
     # 添加正文内容
     for ch in chapters:
         level = ch.get('level', 1)
         number = ch.get('number', '')
         title_text = ch.get('title', '')
         content = ch.get('content', '')
-        
-        # 添加章节标题
-        heading = doc.add_paragraph()
-        run = heading.add_run(f"{number} {title_text}")
-        run.font.name = '黑体'
-        run.font.size = Pt(22 if level == 1 else 16)
-        run.font.bold = True
-        run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
+
+        # 添加章节标题 - 使用 Heading 样式以便 TOC 识别
+        heading_text = f"{number} {title_text}"
+        if level <= 3:
+            # 使用 Word 的 Heading 样式（1-3级）
+            heading = doc.add_heading(heading_text, level=level)
+            # 设置中文字体
+            for run in heading.runs:
+                run.font.name = '黑体' if level == 1 else '楷体'
+                run.font.size = Pt(22 if level == 1 else 16)
+                run.font.bold = True
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体' if level == 1 else '楷体')
+        else:
+            # 4级及以上使用普通段落
+            heading = doc.add_paragraph()
+            run = heading.add_run(heading_text)
+            run.font.name = '楷体'
+            run.font.size = Pt(14)
+            run.font.bold = True
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), '楷体')
+            heading.paragraph_format.first_line_indent = Cm(0.74)
         
         # 添加内容（如果有）
         if content:
