@@ -625,9 +625,10 @@
                         </td>
                         <td>
                             <button class="btn btn-sm btn-primary" onclick="showTaskDetail('${task.task_id}')">详情</button>
-                            ${task.status === 'pending' || task.status === 'processing' ? 
-                                `<button class="btn btn-sm btn-danger" onclick="cancelTask('${task.task_id}')">取消</button>` : 
+                            ${task.status === 'pending' || task.status === 'processing' ?
+                                `<button class="btn btn-sm btn-danger" onclick="cancelTask('${task.task_id}')">取消</button>` :
                                 ''}
+                            <button class="btn btn-sm btn-danger" onclick="deleteTask('${task.task_id}')" style="background: #dc3545;">🗑 删除</button>
                         </td>
                     </tr>
                 `;
@@ -752,45 +753,57 @@
                 `;
             }
 
-            // 生成操作按钮
+            // 生成操作按钮 - 修复下载和预览功能
             let actionButtonsHtml = '';
-            if (task.pending_confirmation) {
-                actionButtonsHtml = `
-                    <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #f39c12;">
-                        <p style="margin-bottom: 10px; color: #856404;"><strong>⏸ 等待确认</strong>：第 ${task.completed_chapters.length} 章已生成完成，请预览后确认是否继续生成下一章</p>
-                        <div style="display: flex; gap: 10px;">
-                            <button class="btn btn-primary" onclick="previewDocument('${task.task_id}')">👁 预览当前文档</button>
-                            <button class="btn btn-success" onclick="continueGeneration('${task.task_id}')">✓ 确认继续</button>
-                            <button class="btn btn-danger" onclick="cancelTask('${task.task_id}')">✕ 取消任务</button>
-                        </div>
-                    </div>
-                `;
-            } else if (task.partial_filename || task.output_filename) {
-                actionButtonsHtml = `
-                    <div style="margin-top: 20px; text-align: center;">
-                        <button class="btn btn-primary" onclick="previewDocument('${task.task_id}')" style="margin-right: 10px;">👁 预览文档</button>
-                        ${task.output_filename ? `
-                            <a href="/api/download/${task.output_filename}" class="btn btn-success" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
-                                📥 下载生成的文档
-                            </a>
-                        ` : (task.partial_filename ? `
-                            <a href="/api/download/${task.partial_filename}" class="btn btn-success" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
-                                📥 下载当前进度文档
-                            </a>
-                        ` : '')}
-                    </div>
-                `;
+            
+            // 检查是否有文档可以下载/预览
+            const hasPartialDoc = task.partial_filename || task.partial_doc_url;
+            const hasOutputDoc = task.output_filename;
+            const isInProgress = ['pending', 'processing', 'generating_ai', 'creating_doc'].includes(task.status);
+            
+            if (hasOutputDoc || hasPartialDoc || isInProgress) {
+                const buttons = [];
+                
+                // 预览按钮 - 始终显示（如果有文档）
+                if (hasOutputDoc || hasPartialDoc) {
+                    buttons.push(`<button class="btn btn-primary" onclick="previewDocument('${task.task_id}')" style="margin-right: 10px;">👁 预览文档</button>`);
+                }
+                
+                // 下载按钮
+                if (hasOutputDoc) {
+                    buttons.push(`<a href="/api/v2/task/${task.task_id}/download" class="btn btn-success" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">📥 下载生成的文档</a>`);
+                } else if (hasPartialDoc) {
+                    // 使用 partial_doc_url（如果是 URL）或构造 URL
+                    const downloadUrl = task.partial_filename && task.partial_filename.startsWith('/') ? task.partial_filename : `/api/v2/task/${task.task_id}/download-partial`;
+                    buttons.push(`<a href="${downloadUrl}" class="btn btn-success" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">📥 下载当前进度</a>`);
+                }
+                
+                // 取消按钮（仅在任务进行中显示）
+                if (isInProgress) {
+                    buttons.push(`<button class="btn btn-danger" onclick="cancelTask('${task.task_id}')" style="margin-left: 10px;">✕ 取消任务</button>`);
+                }
+
+                // 删除按钮（所有任务都可以删除）
+                buttons.push(`<button class="btn btn-danger" onclick="deleteTask('${task.task_id}')" style="margin-left: 10px; background: #dc3545;">🗑 删除任务</button>`);
+
+                if (buttons.length > 0) {
+                    actionButtonsHtml = `<div style="margin-top: 20px; text-align: center;">${buttons.join('')}</div>`;
+                }
             }
 
             content.innerHTML = `
                 <div class="detail-grid">
                     <div class="detail-item">
                         <label>任务 ID</label>
-                        <div class="value">${task.task_id}</div>
+                        <div class="value" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <code style="background: #f4f4f4; padding: 4px 8px; border-radius: 4px; font-family: monospace;">${task.task_id}</code>
+                            <button class="btn btn-sm btn-secondary" onclick="copyTaskId('${task.task_id}')" style="padding: 4px 12px; font-size: 12px;">📋 复制</button>
+                            <a href="/task-monitor?task_id=${task.task_id}" class="btn btn-sm btn-primary" style="padding: 4px 12px; font-size: 12px; text-decoration: none;">🔍 监控</a>
+                        </div>
                     </div>
                     <div class="detail-item">
                         <label>文件名称</label>
-                        <div class="value">${task.output_filename || task.partial_filename || '生成中...'}</div>
+                        <div class="value">${task.output_filename || (task.partial_filename ? '生成中...' : '-')}</div>
                     </div>
                     <div class="detail-item">
                         <label>报告类型</label>
@@ -923,12 +936,98 @@
             }
         }
 
+        // 删除任务
+        async function deleteTask(taskId) {
+            if (!confirm('⚠️ 确定要删除这个任务吗？\n\n删除后将无法恢复，包括：\n- 任务记录\n- 已生成的文档\n- 所有章节内容')) return;
+
+            try {
+                const response = await fetch(`/api/task/delete/${taskId}`, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification('任务已删除', 'success');
+                    // 关闭详情面板（如果打开）
+                    closeDetailModal();
+                    // 刷新列表
+                    loadTaskList(currentPage);
+                } else {
+                    alert('删除失败：' + data.message);
+                }
+            } catch (error) {
+                alert('删除失败：' + error.message);
+            }
+        }
+
         // 关闭弹窗（点击背景）
         document.getElementById('detailModal').addEventListener('click', function(e) {
             if (e.target === this) {
                 closeDetailModal();
             }
         });
+
+        // 复制任务 ID
+        function copyTaskId(taskId) {
+            navigator.clipboard.writeText(taskId).then(() => {
+                showNotification('任务 ID 已复制到剪贴板', 'success');
+            }).catch(err => {
+                // 降级方案
+                const textarea = document.createElement('textarea');
+                textarea.value = taskId;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                showNotification('任务 ID 已复制到剪贴板', 'success');
+            });
+        }
+
+        // 显示通知
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 15px 25px;
+                border-radius: 8px;
+                color: white;
+                font-weight: 500;
+                z-index: 10000;
+                animation: slideIn 0.3s ease;
+                max-width: 300px;
+                word-wrap: break-word;
+            `;
+
+            if (type === 'success') {
+                notification.style.background = '#28a745';
+            } else if (type === 'error') {
+                notification.style.background = '#dc3545';
+            } else {
+                notification.style.background = '#17a2b8';
+            }
+
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
+        // 添加动画样式
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
 
         // 预览文档
         function previewDocument(taskId) {

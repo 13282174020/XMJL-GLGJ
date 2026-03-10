@@ -1769,10 +1769,11 @@ def process_document_async(task_id, template_type, requirement_content, template
     def save_partial_document():
         """保存部分生成的文档"""
         if doc_container['doc']:
-            partial_filename = f'partial_{task_id[:8]}.docx'
-            partial_path = os.path.join(app.config['OUTPUT_FOLDER'], partial_filename)
+            # 保存到任务目录下，使用完整 task_id 作为文件名
+            task_dir = task_manager._get_task_directory(task_id)
+            partial_path = os.path.join(task_dir, f'partial_{task_id}.docx')
             doc_container['doc'].save(partial_path)
-            task_manager.set_partial_filename(task_id, partial_filename)
+            print(f'[INFO] 临时文档已保存：{partial_path}')
 
     try:
         # 标记任务开始
@@ -2022,8 +2023,11 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
         model_config: 模型配置对象
         output_path: 输出文件路径
     """
+    from task_manager import get_task_manager
+
+    task_manager = get_task_manager()
     doc_container = {'doc': None}
-    
+
     # 初始化优化服务
     from ai_engine import reset_optimization_services, get_data_point_manager, get_requirement_analyzer
     reset_optimization_services()
@@ -2033,10 +2037,11 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
 
     def save_partial_document():
         if doc_container['doc']:
-            partial_filename = f'partial_{task_id[:8]}.docx'
-            partial_path = os.path.join(app.config['OUTPUT_FOLDER'], partial_filename)
+            # 保存到任务目录下，使用完整 task_id 作为文件名
+            task_dir = task_manager._get_task_directory(task_id)
+            partial_path = os.path.join(task_dir, f'partial_{task_id}.docx')
             doc_container['doc'].save(partial_path)
-            task_manager.set_partial_filename(task_id, partial_filename)
+            print(f'[INFO] 临时文档已保存：{partial_path}')
 
     try:
         task_manager.set_task_started(task_id)
@@ -2090,6 +2095,10 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
                     })
             print('[INFO] 使用默认模板配置')
 
+        # 初始化章节列表（使用树形结构）
+        task_manager.initialize_chapters_with_tree(task_id, user_chapters)
+        print(f'[TASK] 初始化章节列表（树形）：{len(user_chapters)} 个一级章节')
+
         styles = load_style_config()
         doc = Document()
         normal_style = styles.get('normal', {})
@@ -2098,7 +2107,11 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
         style.font.size = Pt(normal_style.get('font_size', 10.5))
         style._element.rPr.rFonts.set(qn('w:eastAsia'), normal_style.get('font_name', '仿宋'))
 
+        # 获取项目名称
         project_name = "建设项目"
+        if dp_manager.get('项目名称'):
+            project_name = dp_manager.get('项目名称')
+        print(f'[INFO] 项目名称：{project_name}')
 
         # 封面
         title = doc.add_paragraph()
@@ -2134,38 +2147,104 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
         save_partial_document()
         task_manager.update_task_progress(task_id, progress=15, message='目录完成')
 
-        # 正文 - 递归生成所有章节
-        total_chapters = len(user_chapters)
+        # 正文 - 生成所有章节
+        # 计算所有章节标题（包括子章节）
+        all_chapter_titles = []
+        def collect_chapter_titles(nodes):
+            for node in nodes:
+                all_chapter_titles.append(node.get('title', ''))
+                children = node.get('children', [])
+                if children:
+                    collect_chapter_titles(children)
+        collect_chapter_titles(user_chapters)
+        
+        total_chapters = len(all_chapter_titles)
+        chapter_index = 0
 
-        def render_chapter_content(node, level=1):
-            node_number = node.get('number', '')
+        def render_chapter_with_status(node, level=1):
+            """递归渲染章节，同时更新章节状态"""
+            nonlocal chapter_index
             node_title = node.get('title', '')
-            node_level = node.get('level', level)
-            children = node.get('children')
-
-            add_heading(doc, f"{node_number} {node_title}", level=node_level, styles=styles)
-
-            if children is not None and len(children) > 0:
+            children = node.get('children', [])
+            
+            if children:
+                # 有子节点，递归处理
                 for child in children:
-                    render_chapter_content(child, level=node_level + 1)
+                    render_chapter_with_status(child, level + 1)
             else:
-                # 使用 generate_chapter_content 支持 AI 生成
-                generate_chapter_content(
-                    doc=doc,
-                    chapter_node=node,
-                    requirement_content=requirement_content,
-                    template_content=template_content,
-                    user_prompt=user_prompt,
-                    model_config=model_config,
-                    styles=styles
-                )
+                # 叶子节点，更新状态并生成内容
+                task_manager.update_chapter_status(task_id, chapter_index, status='generating')
+                
+                add_heading(doc, f"{node.get('number', '')} {node_title}", level=level, styles=styles)
+                
+                # 生成内容
+                if model_config and model_config.api_key:
+                    # 判断是否为信息提取类章节
+                    if is_info_chapter(node_title):
+                        # 从数据点管理器中获取信息（保证与封面一致）
+                        data_point_key = node_title
+                        # 去除编号前缀，如"1.1 项目名称" -> "项目名称"
+                        for key in ['项目名称', '项目建设单位', '负责人', '联系方式',
+                                    '建设工期', '总投资', '资金来源', '编制单位']:
+                            if key in node_title:
+                                data_point_key = key
+                                break
+                        content = dp_manager.get(data_point_key)
+                        if not content:
+                            # 如果数据点管理器中没有，尝试从需求文档中提取
+                            from ai_engine import extract_info_field
+                            content = extract_info_field(
+                                section_title=node_title,
+                                requirement_text=requirement_content,
+                                ai_call_func=None,
+                                model_config=None
+                            )
+                        if not content:
+                            content = f"【未找到相关信息】请在需求文档中补充{node_title}的具体信息"
+                        print(f'[INFO] 信息提取：{node_title} = {content}')
+                    else:
+                        # 使用 AI 生成内容
+                        from ai_engine import generate_section_content_with_ai
+                        content = generate_section_content_with_ai(
+                            section_title=node_title,
+                            requirement_text=requirement_content,
+                            template_text=template_content,
+                            user_instruction=user_prompt,
+                            model_config=model_config,
+                            fallback_to_template=False
+                        )
+                    
+                    if content.startswith('[AI 生成失败]') or content.startswith('[API'):
+                        print(f'[ERROR] 章节生成失败：{node_title}')
+                        add_normal_paragraph(doc, f"【生成错误】{content}", styles=styles)
+                        task_manager.update_chapter_status(task_id, chapter_index, status='failed',
+                            error_message=content)
+                    else:
+                        for para_text in content.split('\n'):
+                            if para_text.strip():
+                                add_normal_paragraph(doc, para_text.strip(), styles=styles)
+                        task_manager.update_chapter_status(task_id, chapter_index, status='completed',
+                            content=content, word_count=len(content))
+                else:
+                    from ai_engine import get_chapter_content_template
+                    content = get_chapter_content_template(node_title)
+                    for para_text in content.split('\n'):
+                        if para_text.strip():
+                            add_normal_paragraph(doc, para_text.strip(), styles=styles)
+                    task_manager.update_chapter_status(task_id, chapter_index, status='completed',
+                        content=content, word_count=len(content))
+                
+                # 更新进度
+                progress = 15 + int((chapter_index + 1) / total_chapters * 80)
+                task_manager.update_task_progress(task_id, progress=progress,
+                    message=f'正在生成第{chapter_index + 1}章：{node_title}')
+                
+                chapter_index += 1
+                save_partial_document()
 
+        # 遍历一级章节
         for idx, chapter in enumerate(user_chapters):
-            task_manager.update_task_progress(task_id,
-                progress=15 + int((idx + 1) / total_chapters * 80),
-                message=f'正在生成第{idx + 1}章')
-            render_chapter_content(chapter, level=1)
-            save_partial_document()
+            render_chapter_with_status(chapter, level=1)
 
         doc.save(output_path)
         
@@ -2264,32 +2343,12 @@ def process_document_async_v3(task_id, template_type, requirement_content, templ
         
         # 更新任务状态
         task_manager.update_task_status(task_id, status='generating', started_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        
-        # ========== 从需求文档提取数据点 ==========
-        if requirement_content:
-            print(f'\n[DATA] 开始从需求文档提取数据点...')
-            initial_data = dp_manager.extract_from_text(requirement_content, "需求文档")
-            if initial_data:
-                dp_manager.update(initial_data, "需求文档")
-                print(f'[DATA] 提取到数据点：{list(initial_data.keys())}')
-                for key, value in initial_data.items():
-                    print(f'       - {key}: {value}')
-            else:
-                print(f'[DATA] 未提取到数据点')
-            
-            # 提取需求点
-            print(f'\n[REQ] 开始从需求文档提取需求点...')
-            req_analyzer.extract(requirement_content)
-            req_summary = req_analyzer.get_summary()
-            print(f'[REQ] 提取到需求点：')
-            for req_type, items in req_summary.items():
-                if items:
-                    print(f'       - {req_type}: {len(items)} 个')
-        
-        # ========== 加载目录配置 ==========
+
+        # ========== 加载目录配置并初始化章节列表 ==========
+        # 注意：先初始化章节列表，以便前端可以立即显示章节
         chapters_path = os.path.join(app.config['UPLOAD_FOLDER'], 'chapter_config.json')
         user_chapters = None
-        
+
         if os.path.exists(chapters_path):
             try:
                 with open(chapters_path, 'r', encoding='utf-8') as f:
@@ -2298,7 +2357,7 @@ def process_document_async_v3(task_id, template_type, requirement_content, templ
             except Exception as e:
                 print(f'[CHAPTER] 加载目录配置失败：{e}')
                 user_chapters = None
-        
+
         if not user_chapters:
             # 使用默认模板配置
             template_config = TEMPLATE_TYPES.get(template_type, TEMPLATE_TYPES['future_community'])
@@ -2319,17 +2378,32 @@ def process_document_async_v3(task_id, template_type, requirement_content, templ
                         'children': []
                     })
             print(f'\n[CHAPTER] 使用默认模板配置：{len(template_config["chapters"])} 个一级章节')
-        
-        # 初始化章节列表（用于持久化）
-        chapter_titles = []
-        for chapter_node in user_chapters:
-            chapter_titles.append(chapter_node['title'])
-            for section_node in chapter_node.get('children', []):
-                chapter_titles.append(section_node['title'])
-        
-        task_manager.initialize_chapters(task_id, chapter_titles)
-        print(f'\n[CHAPTER] 初始化章节列表：{len(chapter_titles)} 章')
-        
+
+        # 初始化章节列表（使用树形结构）
+        task_manager.initialize_chapters_with_tree(task_id, user_chapters)
+        print(f'\n[CHAPTER] 初始化章节列表（树形）：{len(user_chapters)} 个一级章节')
+
+        # ========== 从需求文档提取数据点 ==========
+        if requirement_content:
+            print(f'\n[DATA] 开始从需求文档提取数据点...')
+            initial_data = dp_manager.extract_from_text(requirement_content, "需求文档")
+            if initial_data:
+                dp_manager.update(initial_data, "需求文档")
+                print(f'[DATA] 提取到数据点：{list(initial_data.keys())}')
+                for key, value in initial_data.items():
+                    print(f'       - {key}: {value}')
+            else:
+                print(f'[DATA] 未提取到数据点')
+
+            # 提取需求点
+            print(f'\n[REQ] 开始从需求文档提取需求点...')
+            req_analyzer.extract(requirement_content)
+            req_summary = req_analyzer.get_summary()
+            print(f'[REQ] 提取到需求点：')
+            for req_type, items in req_summary.items():
+                if items:
+                    print(f'       - {req_type}: {len(items)} 个')
+
         # ========== 创建 Word 文档 ==========
         styles = load_style_config()
         doc = Document()
@@ -2705,7 +2779,7 @@ def generate():
         template_type = request.form.get('template_type', 'future_community')
         user_prompt = request.form.get('requirement', '')
         model = request.form.get('model', 'qwen-max')
-        
+
         # 获取模型配置（使用 v2 版本）
         from model_config_v2 import get_model_config_v2
         model_config = get_model_config_v2(model)
@@ -2717,9 +2791,10 @@ def generate():
 
         if not model_config.api_key:
             return jsonify({'success': False, 'message': f'模型 {model_config.name} 的 API Key 未配置，请前往模型配置管理页面配置'}), 400
-        
-        # 使用模型配置中的 API Key
-        api_key = model_config.api_key
+
+        # 使用新的 v2 任务管理器（支持持久化）
+        from task_manager import get_task_manager
+        task_manager_v2 = get_task_manager()
 
         # 处理上传的文件
         template_file = request.files.get('template')
@@ -2730,61 +2805,74 @@ def generate():
         template_filename = ''
         requirement_filename = ''
 
-        # 读取模板文件
+        # 先创建任务，获取 task_id
+        task_id = task_manager_v2.create_task(
+            template_type=template_type,
+            user_prompt=user_prompt,
+            model=model
+        )
+
+        # 读取模板文件并保存到任务目录
         if template_file and allowed_file(template_file.filename):
             original_filename = secure_filename(template_file.filename)
             # 确保保留扩展名
             if '.' not in original_filename:
                 ext = template_file.filename.rsplit('.', 1)[1].lower()
                 original_filename = f'{original_filename}.{ext}'
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], f'{uuid.uuid4()}_{original_filename}')
-            template_file.save(filepath)
+            
+            # 保存到任务目录
+            file_ext = original_filename.rsplit('.', 1)[-1]
+            task_manager_v2.save_file(task_id, f'template.{file_ext}', template_file.read())
             template_filename = original_filename
 
-            if original_filename.endswith('.docx'):
-                template_content = read_docx_text(filepath)
-                print(f'[DEBUG] 读取模板文件：{filepath}, 长度：{len(template_content)}', flush=True)
-            elif original_filename.endswith('.txt'):
-                template_content = read_txt_text(filepath)
-                print(f'[DEBUG] 读取模板文件：{filepath}, 长度：{len(template_content)}', flush=True)
+            # 读取内容
+            tmpl_path = task_manager_v2.get_file_path(task_id, f'template.{file_ext}')
+            if tmpl_path:
+                if original_filename.endswith('.docx'):
+                    template_content = read_docx_text(tmpl_path)
+                    print(f'[DEBUG] 读取模板文件：{tmpl_path}, 长度：{len(template_content)}', flush=True)
+                elif original_filename.endswith('.txt'):
+                    template_content = read_txt_text(tmpl_path)
+                    print(f'[DEBUG] 读取模板文件：{tmpl_path}, 长度：{len(template_content)}', flush=True)
         else:
             print(f'[WARNING] 模板文件未上传或格式不允许：{template_file}', flush=True)
 
-        # 读取需求文件
+        # 读取需求文件并保存到任务目录
         if requirement_file and allowed_file(requirement_file.filename):
             original_filename = secure_filename(requirement_file.filename)
             # 确保保留扩展名
             if '.' not in original_filename:
                 ext = requirement_file.filename.rsplit('.', 1)[1].lower()
                 original_filename = f'{original_filename}.{ext}'
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], f'{uuid.uuid4()}_{original_filename}')
-            requirement_file.save(filepath)
+            
+            # 保存到任务目录
+            file_ext = original_filename.rsplit('.', 1)[-1]
+            task_manager_v2.save_file(task_id, f'requirement.{file_ext}', requirement_file.read())
             requirement_filename = original_filename
 
-            if original_filename.endswith('.docx'):
-                requirement_content = read_docx_text(filepath)
-                print(f'[DEBUG] 读取需求文件：{filepath}, 长度：{len(requirement_content)}', flush=True)
-            elif original_filename.endswith('.txt'):
-                requirement_content = read_txt_text(filepath)
-                print(f'[DEBUG] 读取需求文件：{filepath}, 长度：{len(requirement_content)}', flush=True)
-            elif original_filename.endswith('.doc'):
-                print(f'[WARNING] 暂不支持读取 .doc 格式文件，请另存为 .docx 格式：{filepath}', flush=True)
-            elif original_filename.endswith('.pdf'):
-                print(f'[WARNING] 暂不支持读取 .pdf 格式文件，请转换为 .txt 或 .docx 格式：{filepath}', flush=True)
-            else:
-                print(f'[WARNING] 未知文件格式：{filepath}', flush=True)
+            # 读取内容
+            req_path = task_manager_v2.get_file_path(task_id, f'requirement.{file_ext}')
+            if req_path:
+                if original_filename.endswith('.docx'):
+                    requirement_content = read_docx_text(req_path)
+                    print(f'[DEBUG] 读取需求文件：{req_path}, 长度：{len(requirement_content)}', flush=True)
+                elif original_filename.endswith('.txt'):
+                    requirement_content = read_txt_text(req_path)
+                    print(f'[DEBUG] 读取需求文件：{req_path}, 长度：{len(requirement_content)}', flush=True)
+                elif original_filename.endswith('.doc'):
+                    print(f'[WARNING] 暂不支持读取 .doc 格式文件，请另存为 .docx 格式：{req_path}', flush=True)
+                elif original_filename.endswith('.pdf'):
+                    print(f'[WARNING] 暂不支持读取 .pdf 格式文件，请转换为 .txt 或 .docx 格式：{req_path}', flush=True)
+                else:
+                    print(f'[WARNING] 未知文件格式：{req_path}', flush=True)
         else:
             print(f'[WARNING] 需求文件未上传或格式不允许：{requirement_file}', flush=True)
 
-        # 创建任务
-        task_id = task_manager.create_task(
-            task_type='document_generation',
-            template_type=template_type,
-            user_prompt=user_prompt,
-            api_key=api_key,
-            model=model,
-            requirement_file=requirement_filename,
-            template_file=template_filename
+        # 更新任务信息（添加文件名）
+        task_manager_v2.update_task_status(
+            task_id,
+            requirement_filename=requirement_filename,
+            template_filename=template_filename
         )
 
         # 生成输出文件名
@@ -2819,66 +2907,64 @@ def generate():
 
 @app.route('/api/task/status/<task_id>', methods=['GET'])
 def task_status(task_id):
-    """查询任务状态和进度"""
-    task_info = task_manager.get_task_status(task_id)
-    
-    if not task_info:
-        return jsonify({
-            'success': False,
-            'message': '任务不存在'
-        }), 404
-
-    # 移除敏感信息
-    safe_info = {
-        'task_id': task_info.get('task_id'),
-        'template_type': task_info.get('template_type'),
-        'status': task_info.get('status'),
-        'progress': task_info.get('progress'),
-        'message': task_info.get('message'),
-        'created_at': task_info.get('created_at'),
-        'started_at': task_info.get('started_at'),
-        'completed_at': task_info.get('completed_at'),
-        'output_filename': task_info.get('output_filename'),
-        'error_message': task_info.get('error_message'),
-        'model': task_info.get('model'),
-        # 新增字段：章节生成步骤、当前章节、已完成章节、等待确认、部分文档
-        'chapter_steps': task_info.get('chapter_steps', []),
-        'current_chapter': task_info.get('current_chapter'),
-        'completed_chapters': task_info.get('completed_chapters', []),
-        'pending_confirmation': task_info.get('pending_confirmation', False),
-        'partial_filename': task_info.get('partial_filename')
-    }
-
-    return jsonify({
-        'success': True,
-        'task': safe_info
-    })
-
-
-@app.route('/api/task/list', methods=['GET'])
-def task_list():
-    """获取任务列表（支持分页和搜索）"""
+    """查询任务状态和进度 - 使用新版 TaskManager"""
     try:
-        page = request.args.get('page', 1, type=int)
-        page_size = request.args.get('page_size', 10, type=int)
-        keyword = request.args.get('keyword', '')
-        status_filter = request.args.get('status', '')
-        
-        result = task_manager.get_task_list(
-            page=page,
-            page_size=page_size,
-            keyword=keyword,
-            status_filter=status_filter if status_filter else None
-        )
-        
+        from task_manager import get_task_manager
+
+        task_manager_v2 = get_task_manager()
+        status = task_manager_v2.get_task_status(task_id)
+
+        if not status:
+            return jsonify({
+                'success': False,
+                'message': '任务不存在'
+            }), 404
+
+        # 状态映射：持久化版本 -> 前端版本
+        STATUS_MAP = {
+            'pending': 'pending',
+            'generating': 'generating_ai',
+            'paused': 'processing',
+            'completed': 'completed',
+            'failed': 'failed',
+            'cancelled': 'cancelled',
+            'partially_completed': 'completed'
+        }
+
+        # 获取已完成的章节标题列表（用于前端显示）
+        completed_chapter_titles = []
+        if status.get('chapters'):
+            for ch in status.get('chapters', []):
+                if ch.get('status') == 'completed':
+                    completed_chapter_titles.append(ch.get('title'))
+
+        # 转换为旧版格式兼容前端
+        safe_info = {
+            'task_id': status.get('task_id'),
+            'template_type': status.get('template_type'),
+            'status': STATUS_MAP.get(status.get('status'), status.get('status')),
+            'progress': status.get('progress'),
+            'message': status.get('message'),
+            'created_at': status.get('created_at'),
+            'updated_at': status.get('updated_at'),
+            'started_at': status.get('started_at'),
+            'completed_at': status.get('completed_at'),
+            'output_filename': status.get('output_filename'),
+            'partial_filename': status.get('partial_doc_url'),  # URL 路径
+            'model': status.get('model'),
+            'chapter_steps': [],
+            'current_chapter': status.get('current_chapter'),
+            'completed_chapters': completed_chapter_titles,  # 章节标题列表（用于显示）
+            'completed_chapters_count': status.get('completed_chapters', 0),  # 已完成章节数（数字）
+            'total_chapters': status.get('total_chapters', 0),
+            'pending_confirmation': False
+        }
+
         return jsonify({
             'success': True,
-            'tasks': result['tasks'],
-            'total': result['total'],
-            'page': result['page'],
-            'page_size': result['page_size']
+            'task': safe_info
         })
-    
+
     except Exception as e:
         return jsonify({
             'success': False,
@@ -2886,11 +2972,89 @@ def task_list():
         }), 500
 
 
+@app.route('/api/task/list', methods=['GET'])
+def task_list():
+    """获取任务列表（支持分页和搜索）- 使用新版 TaskManager"""
+    try:
+        from task_manager import get_task_manager, TASKS_ROOT
+        import os
+
+        task_manager_v2 = get_task_manager()
+        page = request.args.get('page', 1, type=int)
+        page_size = request.args.get('page_size', 10, type=int)
+        keyword = request.args.get('keyword', '')
+        status_filter = request.args.get('status', '')
+
+        tasks = []
+
+        # 遍历任务目录
+        if os.path.exists(TASKS_ROOT):
+            for task_id in os.listdir(TASKS_ROOT):
+                task_dir = os.path.join(TASKS_ROOT, task_id)
+                if not os.path.isdir(task_dir):
+                    continue
+
+                task_info = task_manager_v2.load_task_info(task_id)
+                if task_info:
+                    # 应用状态筛选
+                    if status_filter and task_info.status != status_filter:
+                        continue
+
+                    # 应用关键词筛选
+                    if keyword:
+                        task_str = f"{task_info.task_id} {task_info.template_type} {task_info.model}"
+                        if keyword.lower() not in task_str.lower():
+                            continue
+
+                    tasks.append({
+                        'task_id': task_info.task_id,
+                        'template_type': task_info.template_type,
+                        'status': task_info.status,
+                        'progress': task_info.progress,
+                        'message': task_info.message or '',
+                        'model': task_info.model,
+                        'created_at': task_info.created_at,
+                        'started_at': task_info.started_at,
+                        'completed_at': task_info.completed_at,
+                        'output_filename': task_info.output_filename,
+                        'partial_filename': task_info.partial_filename,
+                        'requirement_file': task_info.requirement_filename,
+                        'template_file': task_info.template_filename
+                    })
+
+        # 按创建时间排序（最新的在前）
+        tasks.sort(key=lambda x: x['created_at'], reverse=True)
+
+        total = len(tasks)
+        start = (page - 1) * page_size
+        end = start + page_size
+        tasks = tasks[start:end]
+
+        return jsonify({
+            'success': True,
+            'tasks': tasks,
+            'total': total,
+            'page': page,
+            'page_size': page_size
+        })
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'message': f'查询失败：{str(e)}',
+            'detail': traceback.format_exc()
+        }), 500
+
+
 @app.route('/api/task/cancel/<task_id>', methods=['POST'])
 def cancel_task(task_id):
-    """取消任务"""
+    """取消任务 - 使用新版 TaskManager"""
     try:
-        success = task_manager.cancel_task(task_id)
+        from task_manager import get_task_manager
+
+        task_manager_v2 = get_task_manager()
+        success = task_manager_v2.cancel_task(task_id)
 
         if success:
             return jsonify({
@@ -2910,26 +3074,56 @@ def cancel_task(task_id):
         }), 500
 
 
+@app.route('/api/task/delete/<task_id>', methods=['POST'])
+def delete_task(task_id):
+    """删除任务 - 使用新版 TaskManager"""
+    try:
+        from task_manager import get_task_manager
+
+        task_manager_v2 = get_task_manager()
+        success = task_manager_v2.delete_task(task_id)
+
+        if success:
+            return jsonify({
+                'success': True,
+                'message': '任务已删除'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '任务不存在或删除失败'
+            }), 400
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'删除失败：{str(e)}'
+        }), 500
+
+
 @app.route('/api/task/continue/<task_id>', methods=['POST'])
 def continue_task(task_id):
-    """继续生成下一章（用户确认后的回调）"""
+    """继续生成下一章（用户确认后的回调）- 使用新版 TaskManager"""
     try:
-        task_info = task_manager.get_task_status(task_id)
+        from task_manager import get_task_manager
+
+        task_manager_v2 = get_task_manager()
+        task_info = task_manager_v2.get_task_status(task_id)
+
         if not task_info:
             return jsonify({
                 'success': False,
                 'message': '任务不存在'
             }), 404
 
-        if task_info.get('status') not in ['generating_ai', 'creating_doc']:
+        if task_info.get('status') not in ['processing', 'generating_ai', 'creating_doc']:
             return jsonify({
                 'success': False,
                 'message': '任务状态不允许继续生成'
             }), 400
 
-        # 清除等待确认状态
-        task_manager.set_pending_confirmation(task_id, False)
-        task_manager.update_task_progress(task_id, message='用户已确认，继续生成下一章')
+        # 继续任务
+        task_manager_v2.continue_task(task_id)
 
         return jsonify({
             'success': True,
@@ -2945,9 +3139,13 @@ def continue_task(task_id):
 
 @app.route('/api/task/preview/<task_id>', methods=['GET'])
 def preview_task(task_id):
-    """预览当前已生成的文档内容"""
+    """预览当前已生成的文档内容 - 使用新版 TaskManager"""
     try:
-        task_info = task_manager.get_task_status(task_id)
+        from task_manager import get_task_manager
+
+        task_manager_v2 = get_task_manager()
+        task_info = task_manager_v2.load_task_info(task_id)
+
         if not task_info:
             return jsonify({
                 'success': False,
@@ -2955,16 +3153,14 @@ def preview_task(task_id):
             }), 404
 
         # 检查是否有部分生成的文档
-        partial_filename = task_info.get('partial_filename')
-        if partial_filename:
-            filepath = os.path.join(app.config['OUTPUT_FOLDER'], partial_filename)
+        if task_info.partial_filename:
+            filepath = os.path.join(app.config['OUTPUT_FOLDER'], task_info.partial_filename)
             if os.path.exists(filepath):
                 return send_file(filepath)
 
         # 或者检查已完成的文档
-        output_filename = task_info.get('output_filename')
-        if output_filename:
-            filepath = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        if task_info.output_filename:
+            filepath = os.path.join(app.config['OUTPUT_FOLDER'], task_info.output_filename)
             if os.path.exists(filepath):
                 return send_file(filepath)
 
@@ -3832,7 +4028,7 @@ def submit_task_v2():
 def get_task_status_v2(task_id):
     """
     获取任务状态（轮询接口）
-    
+
     返回:
     {
         "success": true,
@@ -3850,15 +4046,92 @@ def get_task_status_v2(task_id):
     """
     try:
         from task_manager import get_task_manager
-        
+
         task_manager = get_task_manager()
         status = task_manager.get_task_status(task_id)
-        
+
         if not status:
             return jsonify({'success': False, 'message': '任务不存在'}), 404
-        
+
         return jsonify({'success': True, 'task': status})
-        
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/v2/tasks', methods=['GET'])
+def list_tasks_v2():
+    """
+    获取所有任务列表
+
+    查询参数:
+    - status: 筛选状态 (pending/processing/completed/failed)
+    - limit: 返回数量限制 (默认 50)
+    - offset: 分页偏移 (默认 0)
+
+    返回:
+    {
+        "success": true,
+        "tasks": [
+            {
+                "task_id": "...",
+                "status": "completed",
+                "progress": 100,
+                "template_type": "future_community",
+                "model": "qwen-max",
+                "created_at": "2026-03-10 10:00:00",
+                "updated_at": "2026-03-10 10:05:00"
+            }
+        ],
+        "total": 10
+    }
+    """
+    try:
+        from task_manager import get_task_manager, TASKS_ROOT
+        import os
+
+        task_manager = get_task_manager()
+        status_filter = request.args.get('status')
+        limit = int(request.args.get('limit', 50))
+        offset = int(request.args.get('offset', 0))
+
+        tasks = []
+
+        # 遍历任务目录
+        if os.path.exists(TASKS_ROOT):
+            for task_id in os.listdir(TASKS_ROOT):
+                task_dir = os.path.join(TASKS_ROOT, task_id)
+                if not os.path.isdir(task_dir):
+                    continue
+
+                task_info = task_manager.load_task_info(task_id)
+                if task_info:
+                    # 应用状态筛选
+                    if status_filter and task_info.status != status_filter:
+                        continue
+
+                    tasks.append({
+                        'task_id': task_info.task_id,
+                        'status': task_info.status,
+                        'progress': task_info.progress,
+                        'template_type': task_info.template_type,
+                        'model': task_info.model,
+                        'created_at': task_info.created_at,
+                        'updated_at': task_info.updated_at
+                    })
+
+        # 按创建时间排序（最新的在前）
+        tasks.sort(key=lambda x: x['created_at'], reverse=True)
+
+        total = len(tasks)
+        tasks = tasks[offset:offset + limit]
+
+        return jsonify({
+            'success': True,
+            'tasks': tasks,
+            'total': total
+        })
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -4063,6 +4336,54 @@ def regenerate_chapter_v2(task_id, chapter_index):
             'message': f'请求失败：{str(e)}',
             'detail': traceback.format_exc()
         }), 500
+
+
+@app.route('/api/v2/task/<task_id>/chapters/<int:chapter_index>/content', methods=['PUT'])
+def update_chapter_content_v2(task_id, chapter_index):
+    """
+    更新章节内容（手动编辑）
+
+    请求体:
+    {
+        "content": "编辑后的章节内容..."
+    }
+    """
+    try:
+        from task_manager import get_task_manager
+
+        task_manager = get_task_manager()
+        data = request.get_json()
+        new_content = data.get('content', '')
+
+        if not new_content.strip():
+            return jsonify({'success': False, 'message': '内容不能为空'}), 400
+
+        # 更新章节内容
+        task_manager.update_chapter_status(
+            task_id,
+            chapter_index,
+            content=new_content,
+            status='completed',  # 确保状态为已完成
+            error_message=None   # 清除错误信息
+        )
+
+        # 更新部分文档
+        try:
+            chapters = task_manager.load_chapters(task_id)
+            if chapters:
+                from ai_engine import create_partial_document
+                task_info = task_manager.load_task_info(task_id)
+                create_partial_document(task_id, chapters, task_info.template_type if task_info else 'future_community')
+        except Exception as e:
+            print(f'[WARN] 更新部分文档失败：{e}')
+
+        return jsonify({
+            'success': True,
+            'message': '章节内容已保存'
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/v2/task/<task_id>/chapters/retry-failed', methods=['POST'])

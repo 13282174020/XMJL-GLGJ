@@ -190,135 +190,217 @@
             color: #333;
         }
 
-        /* 章节列表 */
-        .chapters-panel {
+        /* 章节树形面板 - 左右布局 */
+        .chapters-container {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        /* 左侧树形目录 */
+        .chapter-tree-panel {
             background: white;
             border-radius: 12px;
-            padding: 20px 30px;
-            margin-bottom: 20px;
+            padding: 20px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-
-        .chapters-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }
-
-        .chapter-card {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 15px;
-            border: 2px solid transparent;
-            transition: all 0.3s;
-        }
-
-        .chapter-card:hover {
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-
-        .chapter-card.pending {
-            border-color: #6c757d;
-        }
-
-        .chapter-card.generating {
-            border-color: #ffc107;
-            background: #fff8e1;
-        }
-
-        .chapter-card.completed {
-            border-color: #28a745;
-            background: #e8f5e9;
-        }
-
-        .chapter-card.failed {
-            border-color: #dc3545;
-            background: #ffebee;
-        }
-
-        .chapter-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .chapter-title {
-            font-weight: bold;
-            color: #333;
-            font-size: 14px;
-        }
-
-        .chapter-status {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: bold;
-        }
-
-        .status-pending {
-            background: #6c757d;
-            color: white;
-        }
-
-        .status-generating {
-            background: #ffc107;
-            color: #333;
-        }
-
-        .status-completed {
-            background: #28a745;
-            color: white;
-        }
-
-        .status-failed {
-            background: #dc3545;
-            color: white;
-        }
-
-        .chapter-content {
-            font-size: 13px;
-            color: #666;
-            margin-bottom: 10px;
-            max-height: 100px;
+            max-height: 700px;
             overflow-y: auto;
-            white-space: pre-wrap;
-            background: white;
-            padding: 10px;
-            border-radius: 4px;
         }
 
-        .chapter-actions {
+        .chapter-tree-panel h2 {
+            margin: 0 0 15px 0;
+            font-size: 16px;
+            color: #333;
             display: flex;
-            gap: 5px;
-            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
         }
 
-        .chapter-actions .btn {
-            padding: 5px 10px;
+        .chapter-tree {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .chapter-tree ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            margin-left: 18px;
+            border-left: 1px dashed #e0e0e0;
+        }
+
+        .chapter-item {
+            margin: 2px 0;
+        }
+
+        .chapter-item-content {
+            display: flex;
+            align-items: center;
+            padding: 8px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 2px 0;
+        }
+
+        .chapter-item-content:hover {
+            background: #f0f7ff;
+        }
+
+        .chapter-item-content.selected {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+        }
+
+        .chapter-toggle {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 6px;
+            cursor: pointer;
+            color: #666;
             font-size: 12px;
+            flex-shrink: 0;
         }
 
-        /* 内容预览面板 */
+        .chapter-toggle:hover {
+            color: #333;
+        }
+
+        .chapter-icon {
+            margin-right: 8px;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .chapter-text {
+            flex: 1;
+            font-size: 13px;
+            color: #333;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chapter-status-badge {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-left: 8px;
+            flex-shrink: 0;
+        }
+
+        .status-pending { background: #6c757d; color: white; }
+        .status-generating { background: #ffc107; color: #333; }
+        .status-completed { background: #28a745; color: white; }
+        .status-failed { background: #dc3545; color: white; }
+
+        /* 右侧内容预览 */
         .preview-panel {
             background: white;
             border-radius: 12px;
-            padding: 20px 30px;
-            margin-bottom: 20px;
+            padding: 20px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            max-height: 700px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .preview-header h2 {
+            margin: 0;
+            font-size: 16px;
+            color: #333;
+        }
+
+        .preview-title {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
         }
 
         .preview-content {
             background: #f8f9fa;
             padding: 20px;
             border-radius: 8px;
-            max-height: 400px;
+            flex: 1;
             overflow-y: auto;
             white-space: pre-wrap;
             font-family: 'SimSun', serif;
             font-size: 14px;
             line-height: 1.8;
+        }
+
+        .preview-content.editing {
+            background: white;
+            border: 2px solid #4a90e2;
+        }
+
+        .edit-textarea {
+            width: 100%;
+            min-height: 400px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: 'SimSun', serif;
+            font-size: 14px;
+            line-height: 1.8;
+            resize: vertical;
+        }
+
+        .preview-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 300px;
+            color: #999;
+        }
+
+        .preview-empty .icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        /* 重新生成对话框 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
         }
 
         /* 重新生成对话框 */
@@ -543,19 +625,35 @@
             </div>
         </div>
 
-        <!-- 章节列表 -->
-        <div class="chapters-panel" id="chaptersPanel" style="display: none;">
-            <h2>📑 章节列表</h2>
-            <div class="chapters-grid" id="chaptersGrid">
-                <!-- 章节卡片将通过 JS 动态生成 -->
+        <!-- 章节树形结构 - 左右布局 -->
+        <div class="chapters-container" id="chaptersContainer" style="display: none;">
+            <!-- 左侧树形目录 -->
+            <div class="chapter-tree-panel">
+                <h2>📑 章节目录</h2>
+                <div id="chapterTreeContainer">
+                    <p style="color:#999;text-align:center;padding:40px;">暂无章节</p>
+                </div>
             </div>
-        </div>
-
-        <!-- 内容预览 -->
-        <div class="preview-panel" id="previewPanel" style="display: none;">
-            <h2>📖 内容预览</h2>
-            <div class="preview-content" id="previewContent">
-                选择一个章节查看内容预览
+            
+            <!-- 右侧内容预览 -->
+            <div class="preview-panel" id="previewPanel">
+                <div class="preview-header">
+                    <div>
+                        <h2>📖 内容预览</h2>
+                        <div class="preview-title" id="previewTitle">选择一个章节查看内容</div>
+                    </div>
+                    <div id="previewActions" style="display: none;">
+                        <button class="btn btn-secondary" onclick="toggleEditMode()" id="editBtn">✏️ 编辑</button>
+                        <button class="btn btn-primary" onclick="saveChapterContent()" id="saveBtn" style="display: none;">💾 保存</button>
+                        <button class="btn btn-secondary" onclick="cancelEditMode()" id="cancelBtn" style="display: none;">❌ 取消</button>
+                    </div>
+                </div>
+                <div class="preview-content" id="previewContent">
+                    <div class="preview-empty">
+                        <div class="icon">📄</div>
+                        <div>点击左侧章节查看内容预览</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -599,6 +697,14 @@
         let pollTimer = null;
         let isPaused = false;
         let currentRegenerateChapter = null;
+        let currentChapters = [];
+        let selectedChapterIndex = null;
+        let expandedChapters = new Set();  // 记录展开的章节
+
+        // 当前选中的章节
+        let currentPreviewChapter = null;
+        let originalContent = '';
+        let isEditMode = false;
 
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
@@ -696,8 +802,7 @@
             // 显示面板
             document.getElementById('emptyState').style.display = 'none';
             document.getElementById('progressPanel').style.display = 'block';
-            document.getElementById('chaptersPanel').style.display = 'block';
-            document.getElementById('previewPanel').style.display = 'block';
+            document.getElementById('chaptersContainer').style.display = 'grid';
 
             // 更新进度条
             const progressBar = document.getElementById('progressBar');
@@ -707,9 +812,9 @@
             // 更新任务信息
             document.getElementById('taskStatus').textContent = get_status_text(task.status);
             document.getElementById('currentChapter').textContent = task.current_chapter || '-';
-            document.getElementById('completedChapters').textContent = 
+            document.getElementById('completedChapters').textContent =
                 `${task.completed_chapters}/${task.total_chapters}`;
-            document.getElementById('failedChapters').textContent = 
+            document.getElementById('failedChapters').textContent =
                 (task.failed_chapters || []).length;
             document.getElementById('startTime').textContent = task.created_at || '-';
             document.getElementById('updateTime').textContent = task.updated_at || '-';
@@ -724,8 +829,9 @@
                 pauseBtn.className = 'btn btn-warning';
             }
 
-            // 更新章节列表
-            updateChaptersGrid(task.chapters);
+            // 更新章节树
+            currentChapters = task.chapters || [];
+            renderChapterTree(currentChapters);
 
             // 如果任务完成，停止轮询
             if (['completed', 'partially_completed', 'failed', 'cancelled'].includes(task.status)) {
@@ -734,66 +840,315 @@
             }
         }
 
-        // 更新章节网格
-        function updateChaptersGrid(chapters) {
-            const grid = document.getElementById('chaptersGrid');
-            grid.innerHTML = '';
+        // 渲染章节树
+        function renderChapterTree(chapters) {
+            const container = document.getElementById('chapterTreeContainer');
+            if (!chapters || chapters.length === 0) {
+                container.innerHTML = '<p style="color:#999;text-align:center;padding:40px;">暂无章节</p>';
+                return;
+            }
 
-            chapters.forEach(chapter => {
-                const card = document.createElement('div');
-                card.className = `chapter-card ${chapter.status}`;
-                card.onclick = () => showPreview(chapter);
+            container.innerHTML = '';
+            const ul = document.createElement('ul');
+            ul.className = 'chapter-tree';
+            container.appendChild(ul);
 
-                card.innerHTML = `
-                    <div class="chapter-header">
-                        <span class="chapter-title">${chapter.title}</span>
-                        <span class="chapter-status status-${chapter.status}">
-                            ${get_status_text(chapter.status)}
-                        </span>
-                    </div>
-                    ${chapter.status === 'completed' ? `
-                        <div class="chapter-content" style="display: none;">
-                            ${chapter.content || ''}
-                        </div>
-                    ` : ''}
-                    ${chapter.status === 'failed' ? `
-                        <div style="color: #dc3545; font-size: 12px; margin-bottom: 10px;">
-                            ⚠️ ${chapter.error_message || '生成失败'}
-                        </div>
-                    ` : ''}
-                    <div class="chapter-actions">
-                        ${chapter.status === 'completed' ? `
-                            <button class="btn btn-secondary" onclick="event.stopPropagation(); showRegenerateModal(${chapter.index}, '${chapter.title}', ${chapter.regenerated_count || 0})">
-                                🔄 重新生成
-                            </button>
-                        ` : ''}
-                        ${chapter.status === 'failed' ? `
-                            <button class="btn btn-primary" onclick="event.stopPropagation(); showRegenerateModal(${chapter.index}, '${chapter.title}', ${chapter.regenerated_count || 0})">
-                                🔁 重试
-                            </button>
-                            <button class="btn btn-secondary" onclick="event.stopPropagation(); skipChapter(${chapter.index})">
-                                ⏭️ 跳过
-                            </button>
-                        ` : ''}
-                    </div>
-                `;
-
-                grid.appendChild(card);
+            // 为每个章节添加扁平索引
+            let flatIndex = 0;
+            chapters.forEach((chapter, index) => {
+                chapter.flatIndex = flatIndex++;
+                renderChapterItem(chapter, index, 0, ul, chapter.flatIndex);
             });
+        }
+
+        // 渲染单个章节项
+        function renderChapterItem(chapter, index, level, parentElement, flatIndex) {
+            const li = document.createElement('li');
+            li.className = 'chapter-item';
+
+            const itemContent = document.createElement('div');
+            itemContent.className = 'chapter-item-content';
+            if (selectedChapterIndex === index) {
+                itemContent.classList.add('selected');
+            }
+
+            // 保存扁平索引到章节对象
+            chapter.flatIndex = flatIndex;
+            chapter.level = level + 1;  // 设置层级
+
+            // 判断是否有子章节
+            const hasChildren = chapter.children && chapter.children.length > 0;
+            const isExpanded = expandedChapters.has(index);
+
+            // 展开/收起按钮
+            const toggle = document.createElement('span');
+            toggle.className = 'chapter-toggle';
+            if (hasChildren) {
+                toggle.textContent = isExpanded ? '▼' : '▶';
+                toggle.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleChapter(index);
+                };
+            } else {
+                toggle.textContent = '•';
+            }
+
+            // 状态图标
+            const icon = document.createElement('span');
+            icon.className = 'chapter-icon';
+            icon.textContent = getChapterIcon(chapter.status);
+
+            // 标题
+            const text = document.createElement('span');
+            text.className = 'chapter-text';
+            text.textContent = chapter.title;
+            text.title = chapter.title;
+
+            // 状态徽章（只有一级章节显示状态）
+            const badge = document.createElement('span');
+            badge.className = 'chapter-status-badge status-' + chapter.status;
+            badge.textContent = get_status_text(chapter.status);
+            if (hasChildren) {
+                // 一级章节显示状态徽章
+                badge.style.display = 'inline-block';
+            } else {
+                // 叶子节点也显示状态
+                badge.style.display = 'inline-block';
+            }
+
+            itemContent.appendChild(toggle);
+            itemContent.appendChild(icon);
+            itemContent.appendChild(text);
+            itemContent.appendChild(badge);
+
+            // 点击选中章节
+            itemContent.onclick = (e) => {
+                e.stopPropagation();
+                selectChapter(chapter, flatIndex);
+            };
+
+            // 右键菜单 - 重新生成/重试（只有一级章节可以重新生成）
+            itemContent.oncontextmenu = (e) => {
+                e.preventDefault();
+                if (!hasChildren && (chapter.status === 'completed' || chapter.status === 'failed')) {
+                    showRegenerateModal(flatIndex, chapter.title, chapter.regenerated_count || 0);
+                }
+            };
+
+            li.appendChild(itemContent);
+
+            // 渲染子章节
+            if (hasChildren && isExpanded) {
+                const childUl = document.createElement('ul');
+                if (chapter.children) {
+                    chapter.children.forEach((child, childIndex) => {
+                        renderChapterItem(child, childIndex, level + 1, childUl, flatIndex);
+                    });
+                }
+                li.appendChild(childUl);
+            }
+
+            parentElement.appendChild(li);
+        }
+
+        // 获取章节状态图标
+        function getChapterIcon(status) {
+            const iconMap = {
+                'pending': '⏳',
+                'generating': '✍️',
+                'completed': '✅',
+                'failed': '❌'
+            };
+            return iconMap[status] || '⏳';
+        }
+
+        // 切换章节展开/收起
+        function toggleChapter(index) {
+            if (expandedChapters.has(index)) {
+                expandedChapters.delete(index);
+            } else {
+                expandedChapters.add(index);
+            }
+            renderChapterTree(currentChapters);
+        }
+
+        // 选中章节
+        function selectChapter(chapter, index) {
+            selectedChapterIndex = index;
+            currentPreviewChapter = chapter;
+            
+            // 更新选中状态
+            document.querySelectorAll('.chapter-item-content').forEach(el => {
+                el.classList.remove('selected');
+            });
+            if (event && event.currentTarget) {
+                event.currentTarget.classList.add('selected');
+            }
+
+            // 显示预览
+            showPreview(chapter);
         }
 
         // 显示预览
         function showPreview(chapter) {
-            const previewPanel = document.getElementById('previewPanel');
             const previewContent = document.getElementById('previewContent');
+            const previewTitle = document.getElementById('previewTitle');
+            const previewActions = document.getElementById('previewActions');
 
-            previewPanel.style.display = 'block';
-            previewPanel.scrollIntoView({ behavior: 'smooth' });
+            const hasChildren = chapter.children && chapter.children.length > 0;
+
+            previewTitle.textContent = chapter.title;
+
+            // 重置编辑状态
+            isEditMode = false;
+            updateEditUI();
+
+            // 一级章节（有子节点）不显示内容预览
+            if (hasChildren) {
+                previewContent.innerHTML = `
+                    <div class="preview-empty">
+                        <div class="icon">📁</div>
+                        <div>一级章节目录</div>
+                        <div style="font-size:12px;color:#999;margin-top:8px;">请点击子章节查看具体内容</div>
+                    </div>
+                `;
+                originalContent = '';
+                previewActions.style.display = 'none';
+                return;
+            }
 
             if (chapter.status === 'completed' && chapter.content) {
-                previewContent.textContent = chapter.content;
+                previewContent.innerHTML = '';
+                const contentDiv = document.createElement('div');
+                contentDiv.style.whiteSpace = 'pre-wrap';
+                contentDiv.textContent = chapter.content;
+                previewContent.appendChild(contentDiv);
+                originalContent = chapter.content;
+                // 显示编辑按钮
+                previewActions.style.display = 'block';
+            } else if (chapter.status === 'failed') {
+                previewContent.innerHTML = `
+                    <div class="preview-empty">
+                        <div class="icon">❌</div>
+                        <div>生成失败：${chapter.error_message || '未知错误'}</div>
+                    </div>
+                `;
+                originalContent = '';
+                previewActions.style.display = 'none';
             } else {
-                previewContent.textContent = '该章节暂无内容预览';
+                previewContent.innerHTML = `
+                    <div class="preview-empty">
+                        <div class="icon">⏳</div>
+                        <div>该章节暂无内容预览</div>
+                    </div>
+                `;
+                originalContent = '';
+                previewActions.style.display = 'none';
+            }
+        }
+
+        // 切换编辑模式
+        function toggleEditMode() {
+            if (!currentPreviewChapter) return;
+
+            isEditMode = true;
+            const previewContent = document.getElementById('previewContent');
+
+            // 创建 textarea
+            const textarea = document.createElement('textarea');
+            textarea.className = 'edit-textarea';
+            textarea.id = 'editTextarea';
+            textarea.value = originalContent;
+
+            previewContent.innerHTML = '';
+            previewContent.appendChild(textarea);
+            previewContent.classList.add('editing');
+
+            updateEditUI();
+        }
+
+        // 取消编辑模式
+        function cancelEditMode() {
+            isEditMode = false;
+            const previewContent = document.getElementById('previewContent');
+
+            previewContent.textContent = originalContent;
+            previewContent.classList.remove('editing');
+
+            updateEditUI();
+        }
+
+        // 保存章节内容
+        async function saveChapterContent() {
+            if (!currentPreviewChapter) return;
+
+            const textarea = document.getElementById('editTextarea');
+            if (!textarea) return;
+
+            const newContent = textarea.value.trim();
+            if (!newContent) {
+                showNotification('内容不能为空', 'error');
+                return;
+            }
+
+            // 获取章节的扁平索引（用于 API 调用）
+            const flatIndex = currentPreviewChapter.flatIndex !== undefined 
+                ? currentPreviewChapter.flatIndex 
+                : currentPreviewChapter.index;
+
+            try {
+                const response = await fetch(`/api/v2/task/${currentTaskId}/chapters/${flatIndex}/content`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        content: newContent
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification('章节内容已保存', 'success');
+                    originalContent = newContent;
+                    currentPreviewChapter.content = newContent;
+                    isEditMode = false;
+
+                    const previewContent = document.getElementById('previewContent');
+                    previewContent.innerHTML = '';
+                    const contentDiv = document.createElement('div');
+                    contentDiv.style.whiteSpace = 'pre-wrap';
+                    contentDiv.textContent = newContent;
+                    previewContent.appendChild(contentDiv);
+                    previewContent.classList.remove('editing');
+
+                    updateEditUI();
+                    // 刷新章节列表
+                    setTimeout(fetchTaskStatus, 500);
+                } else {
+                    showNotification('保存失败：' + data.message, 'error');
+                }
+            } catch (error) {
+                console.error('保存失败:', error);
+                showNotification('保存失败：' + error.message, 'error');
+            }
+        }
+
+        // 更新编辑 UI
+        function updateEditUI() {
+            const editBtn = document.getElementById('editBtn');
+            const saveBtn = document.getElementById('saveBtn');
+            const cancelBtn = document.getElementById('cancelBtn');
+
+            if (isEditMode) {
+                editBtn.style.display = 'none';
+                saveBtn.style.display = 'inline-block';
+                cancelBtn.style.display = 'inline-block';
+            } else {
+                editBtn.style.display = 'inline-block';
+                saveBtn.style.display = 'none';
+                cancelBtn.style.display = 'none';
             }
         }
 
@@ -923,6 +1278,7 @@
             const statusMap = {
                 'pending': '等待中',
                 'generating': '生成中',
+                'generating_ai': 'AI 生成中',
                 'paused': '已暂停',
                 'completed': '已完成',
                 'partially_completed': '部分完成',

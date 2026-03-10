@@ -27,7 +27,7 @@ MAX_REGENERATE_COUNT = 2
 @dataclass
 class ChapterStatus:
     """章节状态"""
-    index: int                              # 章节索引
+    index: int                              # 章节索引（扁平索引）
     title: str                              # 章节标题
     status: str = 'pending'                 # pending/generating/completed/failed
     content: Optional[str] = None           # 已生成的内容
@@ -36,12 +36,19 @@ class ChapterStatus:
     generated_at: Optional[str] = None      # 生成完成时间
     regenerated_count: int = 0              # 重新生成次数
     last_user_instruction: Optional[str] = None  # 最后一次用户补充需求
-    
+    level: int = 1                          # 章节层级（1=一级章节，2=二级章节，以此类推）
+    number: str = ''                        # 章节编号（如 1, 1.1, 1.1.1）
+
     def to_dict(self) -> Dict:
         return asdict(self)
-    
+
     @classmethod
     def from_dict(cls, data: Dict) -> 'ChapterStatus':
+        # 兼容旧数据（没有 level 和 number 字段）
+        if 'level' not in data:
+            data['level'] = 1
+        if 'number' not in data:
+            data['number'] = str(data.get('index', 0) + 1)
         return cls(**data)
 
 
@@ -54,7 +61,8 @@ class TaskInfo:
     model: str = 'qwen-max'                 # 模型名称
     status: str = 'pending'                 # pending/generating/paused/completed/failed/partially_completed
     progress: int = 0                       # 总体进度 0-100
-    current_chapter_index: int = 0          # 当前正在生成的章节索引
+    message: str = ''                       # 任务状态消息/错误信息
+    current_chapter_index: Optional[int] = None  # 当前正在生成的章节索引
     total_chapters: int = 0                 # 总章节数
     completed_chapters: int = 0             # 已完成章节数
     failed_chapters: List[int] = field(default_factory=list)  # 失败章节索引
@@ -64,6 +72,8 @@ class TaskInfo:
     completed_at: Optional[str] = None
     requirement_filename: Optional[str] = None  # 需求文档文件名
     template_filename: Optional[str] = None     # 模板文档文件名
+    output_filename: Optional[str] = None       # 输出文件名
+    partial_filename: Optional[str] = None      # 部分输出文件名
     
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -154,11 +164,14 @@ class TaskManager:
         task_info = self.load_task_info(task_id)
         if not task_info:
             return
-        
+
         for key, value in kwargs.items():
             if hasattr(task_info, key):
                 setattr(task_info, key, value)
-        
+
+        # 更新更新时间
+        task_info.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
         self._save_task_info(task_id, task_info)
     
     def _save_chapters(self, task_id: str, chapters: List[ChapterStatus]):
@@ -187,21 +200,58 @@ class TaskManager:
         return [ChapterStatus.from_dict(ch) for ch in data.get('chapters', [])]
     
     def initialize_chapters(self, task_id: str, chapter_titles: List[str]):
-        """初始化章节列表"""
+        """初始化章节列表（扁平结构，兼容旧代码）"""
         chapters = [
             ChapterStatus(index=i, title=title)
             for i, title in enumerate(chapter_titles)
         ]
-        
+
         self._save_chapters(task_id, chapters)
-        
+
         # 更新任务信息
         task_info = self.load_task_info(task_id)
         if task_info:
             task_info.total_chapters = len(chapters)
             self._save_task_info(task_id, task_info)
-        
+
         print(f'[TASK] 初始化章节列表：{len(chapters)} 章')
+
+    def initialize_chapters_with_tree(self, task_id: str, chapter_tree: List[Dict]):
+        """
+        初始化章节列表（树形结构）
+        
+        Args:
+            chapter_tree: 树形结构的章节列表，每个节点包含 number, title, level, children
+        """
+        chapters = []
+        index = 0
+
+        def flatten_chapters(nodes: List[Dict], parent_level: int = 0):
+            nonlocal index
+            for node in nodes:
+                level = node.get('level', parent_level + 1)
+                chapters.append(ChapterStatus(
+                    index=index,
+                    title=node.get('title', ''),
+                    level=level,
+                    number=node.get('number', '')
+                ))
+                index += 1
+                # 递归处理子章节
+                children = node.get('children', [])
+                if children:
+                    flatten_chapters(children, level)
+
+        flatten_chapters(chapter_tree)
+        self._save_chapters(task_id, chapters)
+
+        # 更新任务信息
+        task_info = self.load_task_info(task_id)
+        if task_info:
+            task_info.total_chapters = len(chapters)
+            self._save_task_info(task_id, task_info)
+
+        print(f'[TASK] 初始化章节列表（树形）：{len(chapters)} 章')
     
     def update_chapter_status(self, task_id: str, chapter_index: int, **kwargs):
         """更新章节状态"""
@@ -265,31 +315,88 @@ class TaskManager:
         task_info = self.load_task_info(task_id)
         if not task_info:
             return None
-        
+
         chapters = self.load_chapters(task_id)
-        
-        # 获取当前章节
+
+        # 获取当前章节（状态为 generating 的章节）
         current_chapter = None
         for ch in chapters:
             if ch.status == 'generating':
                 current_chapter = ch.title
                 break
-        
+
+        # 如果没有正在生成的章节，使用任务信息中的 current_chapter_index
+        if current_chapter is None and task_info.current_chapter_index is not None and chapters:
+            idx = task_info.current_chapter_index
+            if 0 <= idx < len(chapters):
+                current_chapter = chapters[idx].title
+
+        # 检查临时文档是否存在
+        partial_doc_exists = False
+        if task_info.partial_filename:
+            partial_doc_exists = True
+        else:
+            # 检查是否有 partial_{task_id}.docx 文件
+            partial_path = os.path.join(self._get_task_directory(task_id), f'partial_{task_id}.docx')
+            partial_doc_exists = os.path.exists(partial_path)
+
+        # 将扁平章节转换为树形结构
+        chapter_tree = self._build_chapter_tree(chapters)
+
         return {
             'task_id': task_info.task_id,
             'status': task_info.status,
             'progress': task_info.progress,
+            'message': task_info.message,
             'current_chapter': current_chapter,
             'total_chapters': task_info.total_chapters,
-            'completed_chapters': task_info.completed_chapters,
+            'completed_chapters': task_info.completed_chapters,  # 已完成章节数（数字）
             'failed_chapters': task_info.failed_chapters,
-            'chapters': [ch.to_dict() for ch in chapters],
-            'partial_doc_url': f'/api/task/{task_id}/download-partial' if os.path.exists(
-                os.path.join(self._get_task_directory(task_id), f'partial_{task_id}.docx')
-            ) else None,
+            'chapters': chapter_tree,  # 返回树形结构
+            'partial_doc_url': f'/api/v2/task/{task_id}/download-partial' if partial_doc_exists else None,
+            'output_filename': task_info.output_filename,
             'created_at': task_info.created_at,
             'updated_at': task_info.updated_at
         }
+
+    def _build_chapter_tree(self, chapters: List[ChapterStatus]) -> List[Dict]:
+        """将扁平章节列表转换为树形结构"""
+        if not chapters:
+            return []
+
+        tree = []
+        chapter_dicts = [ch.to_dict() for ch in chapters]
+
+        for ch in chapter_dicts:
+            level = ch.get('level', 1)
+            ch['children'] = ch.get('children', [])
+
+            if level == 1:
+                tree.append(ch)
+            else:
+                # 查找父节点（最后一个 level-1 的节点）
+                parent = self._find_parent_node(tree, level - 1)
+                if parent:
+                    if 'children' not in parent:
+                        parent['children'] = []
+                    parent['children'].append(ch)
+                else:
+                    # 没有找到父节点，作为一级章节
+                    tree.append(ch)
+
+        return tree
+
+    def _find_parent_node(self, nodes: List[Dict], target_level: int) -> Optional[Dict]:
+        """递归查找指定层级的最后一个节点"""
+        for node in reversed(nodes):
+            if node.get('level', 1) == target_level:
+                return node
+            children = node.get('children', [])
+            if children:
+                result = self._find_parent_node(children, target_level)
+                if result:
+                    return result
+        return None
     
     def save_file(self, task_id: str, filename: str, content: bytes):
         """保存上传的文件"""
@@ -362,6 +469,31 @@ class TaskManager:
         """取消任务"""
         self.update_task_status(task_id, status='cancelled')
         print(f'[TASK] 任务已取消：{task_id}')
+
+    def delete_task(self, task_id: str) -> bool:
+        """
+        删除任务及其所有相关文件
+        
+        Args:
+            task_id: 任务 ID
+            
+        Returns:
+            是否删除成功
+        """
+        task_dir = self._get_task_directory(task_id)
+        
+        if not os.path.exists(task_dir):
+            print(f'[TASK] 任务目录不存在：{task_id}')
+            return False
+        
+        try:
+            # 删除整个任务目录
+            shutil.rmtree(task_dir)
+            print(f'[TASK] 任务已删除：{task_id}')
+            return True
+        except Exception as e:
+            print(f'[ERROR] 删除任务失败：{e}')
+            return False
     
     def is_paused(self, task_id: str) -> bool:
         """检查任务是否暂停"""
@@ -387,6 +519,82 @@ class TaskManager:
         """获取失败的章节列表"""
         chapters = self.load_chapters(task_id)
         return [ch for ch in chapters if ch.status == 'failed']
+
+    def update_task_progress(self, task_id: str, progress: int = None, message: str = None, status: str = None):
+        """更新任务进度和消息"""
+        task_info = self.load_task_info(task_id)
+        if not task_info:
+            return
+
+        if progress is not None:
+            task_info.progress = max(0, min(100, progress))
+        if message is not None:
+            task_info.message = message
+        if status is not None:
+            task_info.status = status
+
+        task_info.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self._save_task_info(task_id, task_info)
+
+    def set_partial_filename(self, task_id: str, filename: str):
+        """设置部分输出文件名"""
+        task_info = self.load_task_info(task_id)
+        if not task_info:
+            return
+
+        task_info.partial_filename = filename
+        task_info.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self._save_task_info(task_id, task_info)
+
+    def set_task_started(self, task_id: str):
+        """设置任务开始状态"""
+        task_info = self.load_task_info(task_id)
+        if not task_info:
+            return
+
+        task_info.status = 'generating'
+        task_info.started_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        task_info.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self._save_task_info(task_id, task_info)
+
+    def mark_task_completed(self, task_id: str, output_filename: str = None):
+        """标记任务完成"""
+        task_info = self.load_task_info(task_id)
+        if not task_info:
+            return
+
+        task_info.status = 'completed'
+        task_info.progress = 100
+        task_info.message = '文档生成成功'
+        task_info.completed_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        task_info.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        if output_filename:
+            task_info.output_filename = output_filename
+
+        self._save_task_info(task_id, task_info)
+
+    def mark_task_failed(self, task_id: str, error_message: str):
+        """标记任务失败"""
+        task_info = self.load_task_info(task_id)
+        if not task_info:
+            return
+
+        task_info.status = 'failed'
+        task_info.message = f'生成失败：{error_message}'
+        task_info.completed_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        task_info.updated_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        self._save_task_info(task_id, task_info)
+
+    def set_current_chapter(self, task_id: str, chapter_title: str):
+        """设置当前章节标题（用于兼容旧代码）"""
+        # 持久化版本使用 current_chapter_index，这个方法仅用于兼容
+        pass
+
+    def set_pending_confirmation(self, task_id: str, pending: bool):
+        """设置等待确认状态（用于兼容旧代码）"""
+        # 持久化版本不支持等待确认功能
+        pass
 
 
 # 全局任务管理器实例

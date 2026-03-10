@@ -111,38 +111,47 @@ def _extract_value_from_path(data: Dict, path: str) -> Any:
 
 def _extract_ai_response(result: Dict, model_config: ModelConfig) -> str:
     """提取 AI 响应内容
-    
+
     支持多种响应格式：
-    1. 标准 OpenAI 格式：choices.0.message.content
-    2. 思考过程内容：choices.0.message.reasoning_content（当 content 为空时）
-    3. 百炼格式：output.text
-    
+    1. 标准 OpenAI 格式：choices.0.message.content（优先返回实际内容）
+    2. 百炼格式：output.text
+    3. reasoning_content（思考过程，不使用，仅用于调试）
+
+    重要：不返回 reasoning_content（思考过程），只返回最终的生成内容
+
     Args:
         result: API 返回的原始数据
         model_config: 模型配置
-        
+
     Returns:
-        提取的响应内容
+        提取的响应内容（不包含思考过程）
     """
     # 首先尝试从配置的 response_path 提取
     content = _extract_value_from_path(result, model_config.response_path)
-    
+
     # 如果提取到了内容且不为空，直接返回
     if content:
         return content
-    
-    # 如果 content 为空，尝试 reasoning_content（思考过程）
-    # 适用于 GLM-4.7、DeepSeek R1 等启用思考模式的模型
-    reasoning = _extract_value_from_path(result, "choices.0.message.reasoning_content")
-    if reasoning:
-        return reasoning
-    
+
     # 尝试 output 字段（百炼格式）
     if "output" in result and "text" in result["output"]:
         return result["output"]["text"]
-    
-    # 尝试直接返回错误信息
-    return f"[API 返回格式异常] 无法从路径 {model_config.response_path} 提取内容：{json.dumps(result, ensure_ascii=False)[:500]}"
+
+    # 优先返回实际内容 content，而不是 reasoning_content
+    # 对于 GLM-4.7 等启用思考模式的模型，content 是实际生成内容
+    content_field = _extract_value_from_path(result, "choices.0.message.content")
+    if content_field:
+        return content_field
+
+    # 注意：不再返回 reasoning_content（思考过程）
+    # 如果 content 为空，返回空字符串或错误提示
+    reasoning = _extract_value_from_path(result, "choices.0.message.reasoning_content")
+    if reasoning:
+        print(f'[WARN] content 字段为空，reasoning_content（思考过程）将被忽略')
+        # 不返回思考过程，继续向下处理
+
+    # 尝试直接返回错误信息（不包含原始 JSON，避免泄露思考过程）
+    return f"[API 返回格式异常] 无法提取内容，请检查 API 返回格式是否正确"
 
 
 def call_ai_api(
@@ -220,11 +229,9 @@ def call_ai_api(
         return f"[API 错误] 不支持的请求格式: {model_config.request_format}"
 
     try:
-        # 智谱 AI GLM-4.7 启用思考模式时需要更长的超时时间
+        # 使用默认超时时间
         timeout = model_config.timeout
-        if model_config.provider_id == "zhipu" and "glm-4" in model_config.model.lower():
-            timeout = max(timeout, 300)  # 至少 5 分钟
-        
+
         response = requests.post(
             base_url,
             headers=headers,
@@ -618,9 +625,10 @@ def build_info_field_prompt(section_title: str, requirement_text: str, template_
 【要求】
 1. 优先从需求文档中提取准确的{section_title}
 2. 如果文档中没有明确的{section_title}，请根据上下文智能生成一个合理的、专业的{section_title}
-3. 只输出{section_title}的内容，不要解释
-4. 不超过 50 字
-5. 内容要专业、符合可行性研究报告规范
+3. **只输出{section_title}的内容，不要解释，不要输出分析过程、思考过程**
+4. **直接输出结果，不要使用任何 Markdown 格式（如 **粗体**、## 标题等）**
+5. 不超过 50 字
+6. 内容要专业、符合可行性研究报告规范
 
 【{section_title}】
 """
@@ -717,6 +725,8 @@ def build_desc_field_prompt(section_title: str, requirement_text: str, template_
 - **严禁**生成其他章节的内容（如建设目标、建设规模、项目效益等）
 - **严禁**在内容中重复或罗列其他章节的标题
 - 如果需求文档包含多个主题，只提取与【{section_title}】相关的内容
+- **重要**：直接输出章节正文内容，不要输出任何分析过程、思考过程、元信息（如"分析请求"、"目标"、"输入"、"输出"等）
+- **重要**：不要使用 Markdown 格式（如 **粗体**、## 标题等），直接输出纯文本
 
 【章节标题】{section_title}
 
@@ -747,9 +757,10 @@ def build_desc_field_prompt(section_title: str, requirement_text: str, template_
 6. 结合需求文档中的具体场景和问题，不要泛泛而谈
 7. **不要输出章节标题**（如"{section_title}"）
 8. **不要生成总结性段落**（如"通过实施本项目..."）
-9. 字数控制在 200-400 字（除非模板格式要求更多内容）
+9. **不要输出任何分析过程、思考过程、元信息**
+10. 字数控制在 200-400 字（除非模板格式要求更多内容）
 
-【请开始撰写】
+【请开始撰写，直接输出正文内容】
 """
 
 
@@ -867,6 +878,110 @@ def clean_ai_content(content: str, section_title: str) -> str:
     if not content:
         return ''
 
+    # ===== 第一步：过滤 AI 思考过程 =====
+    # AI 思考过程的典型标记
+    thinking_markers = [
+        r'^\*\*分析请求：\*\*',
+        r'^\*\*目标：\*\*',
+        r'^\*\*约束条件：\*\*',
+        r'^\*\*输入数据：\*\*',
+        r'^\*\*输出要求：\*\*',
+        r'^\*\*请开始撰写\*\*',
+        r'^\d+\.\s*分析请求',
+        r'^\d+\.\s*分析需求',
+        r'^\d+\.\s*确定.*内容',
+        r'^\d+\.\s*起草内容',
+        r'^\d+\.\s*起草策略',
+        r'^\d+\.\s*优化内容',
+        r'^\d+\.\s*格式检查',
+        r'^角色：',
+        r'^任务：',
+        r'^约束条件：',
+        r'^输入数据：',
+        r'^输出要求：',
+        r'^起草策略：',
+        r'^优化内容：',
+        r'^格式检查：',
+        r'^尝试\s*\d+',
+        r'^\*\*尝试\s*\d+\*\*',
+        # GLM-4.7 思考过程标记
+        r'^\*\*\s*1\.\s*分析请求\s*\*\*',
+        r'^\*\*\s*2\.\s*分析需求\s*\*\*',
+        r'^\*\*\s*3\.\s*确定.*\*\*',
+        r'^\*\*\s*4\.\s*起草.*\*\*',
+        r'^\*\*\s*5\.\s*优化.*\*\*',
+        r'^\*\*\s*6\.\s*格式检查.*\*\*',
+        r'^\*\*分析请求：\*\*',
+        r'^\*\*目标：\*\*',
+        r'^\*\*输入：\*\*',
+        r'^\*\*输出：\*\*',
+        r'^\*\*关键信息：\*\*',
+        r'^\*\*提取结果：\*\*',
+        r'^\*\*开始生成.*\*\*',
+        r'^\*\*开始撰写.*\*\*',
+        r'^【分析请求】',
+        r'^【目标】',
+        r'^【输入】',
+        r'^【输出】',
+        r'^\*\*1\.\*\*',
+        r'^\*\*2\.\*\*',
+        r'^\*\*3\.\*\*',
+        r'^\*\*4\.\*\*',
+        r'^\*\*5\.\*\*',
+        r'^\*\*6\.\*\*',
+    ]
+
+    # 检测内容是否包含思考过程
+    has_thinking = False
+    for marker in thinking_markers:
+        if re.search(marker, content, re.MULTILINE | re.IGNORECASE):
+            has_thinking = True
+            print(f'[INFO] 检测到 AI 思考过程，需要过滤')
+            break
+
+    if has_thinking:
+        # 尝试提取实际内容（通常在 "尝试" 或数字编号之后）
+        # 策略：找到第一个符合正文格式的行（如 "1. XXX" 或 "GB/T" 或 "第X条"）
+        lines = content.split('\n')
+        actual_content_start = 0
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            # 检测思考过程标记
+            is_thinking_line = False
+            for marker in thinking_markers:
+                if re.search(marker, stripped, re.IGNORECASE):
+                    is_thinking_line = True
+                    break
+
+            # 检测思考过程中的元信息行
+            if re.search(r'^(项目名称|建设单位|总人口|重点|核心|具体场景)', stripped):
+                is_thinking_line = True
+
+            if is_thinking_line:
+                actual_content_start = i + 1
+                continue
+
+            # 检测到实际内容开始的标记
+            # 1. 数字编号列表（如 "1. "、"1.1 "）
+            # 2. 标准编号（如 "GB/T"、"DB33/T"）
+            # 3. 书名号（如 "《XXX》"）
+            if re.search(r'^\d+[\.\s]', stripped) or \
+               re.search(r'^(GB/T|DB33/T|GB|DB|ISO|IEC)', stripped) or \
+               stripped.startswith('《'):
+                actual_content_start = i
+                print(f'[INFO] 找到实际内容起始行 {i}: {stripped[:50]}...')
+                break
+
+        # 截取实际内容
+        if actual_content_start > 0:
+            content = '\n'.join(lines[actual_content_start:])
+            print(f'[INFO] 已过滤思考过程，保留实际内容')
+
+    # ===== 第二步：清理其他章节混入和格式 =====
     # 常见章节标题模式（用于检测混入的其他章节）
     other_section_patterns = [
         r'^\s*\d+[\.\s]+建设目标',
@@ -890,7 +1005,7 @@ def clean_ai_content(content: str, section_title: str) -> str:
         r'^\s*\d+\.\d+\s+',  # 如 "1.1 项目名称"
         r'^\s*【[^】]+】',     # 如 "【建设目标】"
     ]
-    
+
     lines = content.split('\n')
     cleaned_lines = []
     found_other_section = False
@@ -905,7 +1020,7 @@ def clean_ai_content(content: str, section_title: str) -> str:
             continue
         if stripped.startswith('#'):
             continue
-        
+
         # 检测是否出现其他章节标题
         for pattern in other_section_patterns:
             if re.search(pattern, stripped, re.IGNORECASE):
@@ -913,15 +1028,15 @@ def clean_ai_content(content: str, section_title: str) -> str:
                 print(f'[WARN] 检测到混入的其他章节标题，截断: {stripped[:50]}...')
                 found_other_section = True
                 break
-        
+
         if found_other_section:
             break
-        
+
         # 检测总结性段落的开头
         if re.search(r'^(通过实施本项目|综上所述|总之|本项目旨在|本次建设)', stripped):
             print(f'[WARN] 检测到总结性段落，截断: {stripped[:50]}...')
             break
-        
+
         # 清理 Markdown 格式符号
         # 移除 ** 粗体符号
         stripped = re.sub(r'\*\*(.+?)\*\*', r'\1', stripped)
@@ -933,7 +1048,7 @@ def clean_ai_content(content: str, section_title: str) -> str:
         stripped = re.sub(r'^#+\s*', '', stripped)
         # 移除 - 列表符号（但保留内容）
         stripped = re.sub(r'^[-•●*]\s+', '', stripped)
-        
+
         cleaned_lines.append(stripped)
 
     return '\n'.join(cleaned_lines)
