@@ -916,8 +916,14 @@
             // 标题
             const text = document.createElement('span');
             text.className = 'chapter-text';
-            text.textContent = chapter.title;
-            text.title = chapter.title;
+            // 如果章节有 number 字段，则显示 "number title"，否则只显示 title
+            if (chapter.number && chapter.number.trim() !== '') {
+                text.textContent = chapter.number + ' ' + chapter.title;
+                text.title = chapter.number + ' ' + chapter.title;
+            } else {
+                text.textContent = chapter.title;
+                text.title = chapter.title;
+            }
 
             // 状态徽章（只有一级章节显示状态）
             const badge = document.createElement('span');

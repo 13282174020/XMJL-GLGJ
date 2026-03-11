@@ -690,15 +690,49 @@ def read_txt_text(file_path):
             return f"读取失败：{str(e)}"
 
 
-def get_heading_level(style_name):
-    """从样式名获取标题级别"""
-    if style_name and 'Heading' in style_name:
-        try:
-            level_str = style_name.replace('Heading', '').strip()
-            level = int(''.join(filter(str.isdigit, level_str)) or '0')
-            return level if level > 0 else 1
-        except:
+def get_heading_level(style_name, text=''):
+    """从样式名获取标题级别
+    
+    优化：支持 Heading 1-6 和标题 1-6 样式
+    
+    Returns:
+        1=章，2=节，3=小节，4=小小节，5=第 5 级，6=第 6 级，0=正文
+    """
+    # 从样式名识别
+    if style_name:
+        style_lower = style_name.lower()
+        
+        # 检查 Heading 1-6
+        if 'heading' in style_lower:
+            try:
+                # 提取数字：Heading 1 -> 1, Heading 2 -> 2
+                num_str = ''.join(filter(str.isdigit, style_lower.replace('heading', '')))
+                if num_str:
+                    level = int(num_str)
+                    if 1 <= level <= 6:
+                        return level
+            except:
+                pass
+        
+        # 检查 标题 1-6
+        if '标题' in style_lower:
+            try:
+                num_str = ''.join(filter(str.isdigit, style_lower.replace('标题', '')))
+                if num_str:
+                    level = int(num_str)
+                    if 1 <= level <= 6:
+                        return level
+            except:
+                pass
+        
+        # 检查特殊样式名
+        if '章' in style_lower or 'chapter' in style_lower:
             return 1
+        if '节' in style_lower or 'section' in style_lower:
+            return 2
+        if '小节' in style_lower or 'subsection' in style_lower:
+            return 3
+    
     return 0
 
 
@@ -708,31 +742,42 @@ def generate_chapter_numbering(headings):
     L1: 第一章、第二章...
     L2: 1.1, 1.2...
     L3: 1.1.1, 1.1.2...
-    L4: (1), (2)...
+    L4: 1.1.1.1, 1.1.1.2...
+    L5: 1.1.1.1.1, 1.1.1.1.2...
+    L6: 1.1.1.1.1.1, 1.1.1.1.1.2...
     """
-    counters = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    counters = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
     chinese_num = [
         '零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十',
         '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十',
-        '二十一', '二十二', '二十三', '二十四', '二十五', '二十六', '二十七', '二十八', '二十九', '三十'
+        '二十一', '二十二', '二十三', '二十四', '二十五', '二十六', '二十七', '二十八', '二十九', '三十',
+        '三十一', '三十二', '三十三', '三十四', '三十五', '三十六', '三十七', '三十八', '三十九', '四十',
+        '四十一', '四十二', '四十三', '四十四', '四十五', '四十六', '四十七', '四十八', '四十九', '五十',
+        '五十一', '五十二', '五十三', '五十四', '五十五', '五十六', '五十七', '五十八', '五十九', '六十'
     ]
 
     for h in headings:
         level = h['level']
         counters[level] += 1
-        for l in range(level + 1, 6):
+        # 重置所有子级计数器
+        for l in range(level + 1, 7):
             counters[l] = 0
 
         if level == 1:
-            h['numbering'] = f'第{chinese_num[counters[1]]}章'
+            # 安全访问数组，超出范围则使用数字
+            idx = counters[1]
+            chinese = chinese_num[idx] if idx < len(chinese_num) else str(idx)
+            h['numbering'] = f'第{chinese}章'
         elif level == 2:
             h['numbering'] = f'{counters[1]}.{counters[2]}'
         elif level == 3:
             h['numbering'] = f'{counters[1]}.{counters[2]}.{counters[3]}'
         elif level == 4:
-            h['numbering'] = f'({counters[4]})'
-        elif level == 5:
             h['numbering'] = f'{counters[1]}.{counters[2]}.{counters[3]}.{counters[4]}'
+        elif level == 5:
+            h['numbering'] = f'{counters[1]}.{counters[2]}.{counters[3]}.{counters[4]}.{counters[5]}'
+        elif level == 6:
+            h['numbering'] = f'{counters[1]}.{counters[2]}.{counters[3]}.{counters[4]}.{counters[5]}.{counters[6]}'
     return headings
 
 
@@ -776,6 +821,8 @@ def scan_template_styles(file_path):
     """
     扫描 Word 模板文件，提取章节目录结构
     严格基于 Heading 样式和 XML 编号信息提取（参考 extract_toc.py）
+    
+    优化：支持 1-6 级目录识别
     """
     try:
         doc = Document(file_path)
@@ -788,7 +835,8 @@ def scan_template_styles(file_path):
                 continue
 
             style_name = para.style.name if para.style else ''
-            level = get_heading_level(style_name)
+            # 传递 text 参数，支持从文本编号识别层级
+            level = get_heading_level(style_name, text)
 
             if level > 0:
                 headings.append({

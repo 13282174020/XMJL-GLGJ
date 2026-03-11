@@ -1,0 +1,21 @@
+{
+  "task_id": "beb64edbb41a4a8d99c935bcf9bb39cd",
+  "template_type": "future_community",
+  "user_prompt": "",
+  "model": "ollama-deepseek-r1-14b-q6",
+  "status": "completed",
+  "progress": 100,
+  "message": "文档生成成功",
+  "current_chapter_index": null,
+  "total_chapters": 154,
+  "completed_chapters": 29,
+  "failed_chapters": [],
+  "created_at": "2026-03-11 11:28:06",
+  "updated_at": "2026-03-11 11:34:16",
+  "started_at": "2026-03-11 11:28:06",
+  "completed_at": "2026-03-11 11:34:16",
+  "requirement_filename": "docx.docx",
+  "template_filename": "docx.docx",
+  "output_filename": "future_community_可行性研究报告_beb64edb.docx",
+  "partial_filename": null
+}
