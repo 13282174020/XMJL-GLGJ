@@ -54,6 +54,87 @@ def get_content_optimizer() -> ContentOptimizer:
     return _content_optimizer
 
 
+def extract_project_type(requirement_text: str) -> str:
+    """从需求文档中提取项目类型
+    
+    Args:
+        requirement_text: 需求文档内容
+        
+    Returns:
+        项目类型字符串，如"未来社区"、"智慧园区"等
+    """
+    if not requirement_text:
+        return ""
+    
+    # 项目类型关键词映射
+    project_types = {
+        '未来社区': ['未来社区', '未来小区'],
+        '智慧社区': ['智慧社区', '智慧小区', '智慧住区'],
+        '智慧园区': ['智慧园区', '产业园区', '科技园区', '工业园'],
+        '智慧校园': ['智慧校园', '数字校园', '智慧学校', '数字化校园'],
+        '智慧医院': ['智慧医院', '数字医院', '智慧医疗', '医院信息化'],
+        '智慧政务': ['智慧政务', '数字政府', '政务信息化', '电子政务'],
+        '智慧乡村': ['智慧乡村', '数字乡村', '乡村治理'],
+        '智慧景区': ['智慧景区', '智慧旅游', '景区管理'],
+    }
+    
+    # 统计每个项目类型的匹配次数
+    type_scores = {}
+    for project_type, keywords in project_types.items():
+        score = sum(1 for keyword in keywords if keyword in requirement_text)
+        if score > 0:
+            type_scores[project_type] = score
+    
+    # 返回匹配度最高的项目类型
+    if type_scores:
+        return max(type_scores, key=type_scores.get)
+    
+    return ""
+
+
+def extract_business_scenes(requirement_text: str) -> list:
+    """从需求文档中提取业务场景
+    
+    Args:
+        requirement_text: 需求文档内容
+        
+    Returns:
+        业务场景列表
+    """
+    if not requirement_text:
+        return []
+    
+    scenes = []
+    
+    # 业务场景关键词分类
+    scene_keywords = {
+        '智慧安防': ['智慧安防', '安防监控', '高空抛物', '门禁系统', '车辆识别', '平安码'],
+        '人员管理': ['人员管理', '流动人口', '人口分析', '访客管理', '实名制'],
+        '邻里商业': ['邻里街', '商业配套', '15 分钟生活圈', '商铺管理'],
+        '共享空间': ['共享空间', '共享书房', '活动室', '公共空间', '文化空间'],
+        '未来健康': ['未来健康', '健康管理', '健康咨询', '医疗服务'],
+        '未来低碳': ['未来低碳', '低碳社区', '节能减排', '绿色社区', '垃圾分类'],
+        '物业管理': ['物业管理', '物业服务', '物业费', '水电上报'],
+        '停车管理': ['停车管理', '停车位', '智能停车', '车辆管理'],
+        '环境监测': ['环境监测', '空气质量', '噪音监测', '环境监测'],
+        '能源管理': ['能源管理', '能耗监测', '智能电表', '节能管理'],
+        '社区治理': ['社区治理', '网格化管理', '基层治理', '民主协商'],
+        '志愿服务': ['志愿服务', '志愿者', '公益活动', '社区活动'],
+        '智慧养老': ['智慧养老', '养老服务', '居家养老', '老年服务'],
+        '智慧教育': ['智慧教育', '社区教育', '培训服务'],
+        '智慧物流': ['智慧物流', '快递柜', '物流配送', '最后 100 米'],
+    }
+    
+    for scene_name, keywords in scene_keywords.items():
+        for keyword in keywords:
+            if keyword in requirement_text:
+                if scene_name not in scenes:
+                    scenes.append(scene_name)
+                break
+    
+    return scenes
+
+
 def reset_optimization_services():
     """重置优化服务（用于新文档生成任务）"""
     global _data_point_manager, _requirement_analyzer, _content_optimizer
@@ -768,11 +849,23 @@ def extract_template_section(section_title: str, template_text: str) -> str:
 
 
 def build_desc_field_prompt(section_title: str, requirement_text: str, template_text: str, user_instruction: str) -> str:
-    """构建描述型字段的 Prompt（详细论述，带数据注入、Few-shot 示例和类型识别）"""
+    """构建描述型字段的 Prompt（详细论述，带数据注入、Few-shot 示例和类型识别）
+    
+    核心优化：
+    1. 从需求文档提取项目类型和业务场景，明确告知 AI 应该写什么业务
+    2. 强化指令，明确区分"内容来源"和"格式参考"
+    3. 添加撰写原则，确保 AI 围绕需求文档的业务来写
+    """
     # 调试输出
     print(f'[DEBUG] 生成描述型字段：{section_title}')
     print(f'[DEBUG] 需求文档长度：{len(requirement_text) if requirement_text else 0}')
     print(f'[DEBUG] 模板参考长度：{len(template_text) if template_text else 0}')
+    
+    # 从需求文档提取项目类型和业务场景
+    project_type = extract_project_type(requirement_text)
+    business_scenes = extract_business_scenes(requirement_text)
+    print(f'[DEBUG] 识别项目类型：{project_type if project_type else "未识别"}')
+    print(f'[DEBUG] 识别业务场景：{business_scenes if business_scenes else "未识别"}')
 
     # 获取数据点管理器和需求分析器
     dp_manager = get_data_point_manager()
@@ -805,29 +898,41 @@ def build_desc_field_prompt(section_title: str, requirement_text: str, template_
     type_guidance = ''
     if type_info['format_strategy']:
         type_guidance = f"\n【格式策略】{type_info['format_strategy']}"
+    
+    # 构建项目类型和业务场景提示
+    project_type_hint = ''
+    if project_type:
+        project_type_hint = f"- **项目类型**：{project_type}\n"
+    if business_scenes:
+        scenes_text = '\n'.join(f"   - {scene}" for scene in business_scenes)
+        project_type_hint += f"- **业务场景**：\n{scenes_text}\n"
 
     return f"""你是一位专业的可行性研究报告编写专家。
 
 【任务】请为【{section_title}】这一章节撰写内容。
 
 【重要提示】
-- 只生成【{section_title}】这一章节的内容
-- **严禁**生成其他章节的内容（如建设目标、建设规模、项目效益等）
+- **内容来源**：必须严格基于【需求文档内容】中的业务信息，这是你撰写内容的唯一来源
+- **模板用途**：【参考模板】仅用于学习格式、结构、论述方式，不要直接复用其中的具体业务信息
+- **撰写原则**：围绕上述项目类型和业务场景进行撰写，确保内容贴合实际需求
+- 只生成【{section_title}】这一章节的内容，不要涉及其他章节
 - **严禁**在内容中重复或罗列其他章节的标题
-- 如果需求文档包含多个主题，只提取与【{section_title}】相关的内容
-- **重要**：直接输出章节正文内容，不要输出任何分析过程、思考过程、元信息（如"分析请求"、"目标"、"输入"、"输出"等）
+- **重要**：直接输出章节正文内容，不要输出任何分析过程、思考过程、元信息
 - **重要**：不要使用 Markdown 格式（如 **粗体**、## 标题等），直接输出纯文本
+
+【项目信息】
+{project_type_hint if project_type_hint else '- 项目类型：根据需求文档确定'}
 
 【章节标题】{section_title}
 
 {data_points_text}
 
-【需求文档内容】
+【需求文档内容】（这是你撰写内容的唯一来源）
 {requirement_text[:2000] if requirement_text else '无相关需求文档'}
 
 {requirements_text}
 
-【参考模板（本章节）】
+【参考模板（仅学习格式，不要复制业务内容）】
 {template_section if template_section else '无参考模板'}
 
 【用户补充要求】
@@ -835,14 +940,11 @@ def build_desc_field_prompt(section_title: str, requirement_text: str, template_
 {type_guidance}
 {few_shot_prompt}
 【输出要求】
-1. **只生成【{section_title}】的内容**，不要涉及其他章节
-2. 内容要专业、准确、逻辑清晰，使用正式的公文语言
-3. **重要**：引用数据时必须与【已确立的关键数据】保持完全一致
-4. **重要**：必须回应【本章应回应的需求点】中的每一个要点
-5. **格式要求**：严格参考【参考模板】的格式、结构和风格
-   - 如果模板是列表形式（如"1. XXX 2. XXX"），请生成类似的列表
-   - 如果模板包含标准编号（如"GB/T、DB33/T"），请包含相应的标准编号
-   - 保持与模板相同的段落结构和层次
+1. **内容来源**：必须来自需求文档，根据项目类型和业务场景进行撰写
+2. **格式参考**：参考模板的段落结构、列表形式、标准编号等格式特征
+3. 内容要专业、准确、逻辑清晰，使用正式的公文语言
+4. **重要**：引用数据时必须与【已确立的关键数据】保持完全一致
+5. **重要**：必须回应【本章应回应的需求点】中的每一个要点
 {format_guidance}
 6. 结合需求文档中的具体场景和问题，不要泛泛而谈
 7. **不要输出章节标题**（如"{section_title}"）
@@ -1325,8 +1427,8 @@ def create_partial_document(task_id, chapters, template_type='future_community')
         title_text = ch.get('title', '')
         content = ch.get('content', '')
 
-        # 添加章节标题 - 使用 Heading 样式以便 TOC 识别
-        heading_text = f"{number} {title_text}"
+        # 修复：title 已经包含编号，不需要再添加
+        heading_text = title_text
         if level <= 3:
             # 使用 Word 的 Heading 样式（1-3级）
             heading = doc.add_heading(heading_text, level=level)
