@@ -331,6 +331,15 @@ PRESET_PROVIDERS = {
                 "description": "Ollama 本地部署的 DeepSeek-R1-Distill-Qwen-14B-GGUF Q4_K_M 量化模型"
             },
             {
+                "id": "ollama-deepseek-r1-14b-q6",
+                "name": "DeepSeek-R1-14B-Q6_K (Ollama)",
+                "type": "text",
+                "model": "modelscope.cn/unsloth/DeepSeek-R1-Distill-Qwen-14B-GGUF:Q6_K",
+                "max_tokens": 4000,
+                "temperature": 0.7,
+                "description": "Ollama 本地部署的 DeepSeek-R1-Distill-Qwen-14B-GGUF Q6_K 量化模型（更高精度）"
+            },
+            {
                 "id": "ollama-llama3",
                 "name": "Llama3 (Ollama)",
                 "type": "text",

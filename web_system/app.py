@@ -1582,14 +1582,13 @@ def generate_word_document(template_type, requirement_content, template_content,
 
     def render_chapter_content(node, level=1):
         """递归渲染章节内容"""
-        node_number = node.get('number', '')
         node_title = node.get('title', '')
         node_level = node.get('level', level)
         children = node.get('children')
-        
-        # 添加章节标题
-        add_heading(doc, f"{node_number} {node_title}", level=node_level, styles=styles)
-        
+
+        # 添加章节标题 - 修复：title 已经包含编号
+        add_heading(doc, node_title, level=node_level, styles=styles)
+
         # 判断是否有子节点
         if children is not None and len(children) > 0:
             # 有子节点，递归处理
@@ -1626,7 +1625,8 @@ def render_doc_toc(doc, chapters, styles, level=0):
     for chapter in chapters:
         para = doc.add_paragraph()
         para.paragraph_format.left_indent = Cm(0.74 * level)
-        run = para.add_run(f"{chapter['number']} {chapter['title']}")
+        # 修复：title 已经包含编号，不需要再添加 number
+        run = para.add_run(chapter['title'])
         run.font.name = '宋体'
         run.font.size = Pt(10.5)
         run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
@@ -1647,16 +1647,20 @@ def generate_chapter_content(doc, chapter_node, requirement_content, template_co
     - 无模型配置：使用模板内容
     """
     from ai_engine import generate_section_content_with_ai
-    
+
     children = chapter_node.get('children')
+    node_title = chapter_node.get('title', '')
+    node_level = chapter_node.get('level', depth + 1)
 
     # 判断是否有子节点
     if children is not None and len(children) > 0:
-        # 有子节点，递归处理
+        # 有子节点，先添加当前章节标题
+        add_heading(doc, node_title, level=node_level, styles=styles)
+        # 递归处理子节点
         for child in children:
-            child_level = child.get('level', 2)
-            # 根据层级添加标题
-            add_heading(doc, f"{child['number']} {child['title']}", level=child_level, styles=styles)
+            child_level = child.get('level', node_level + 1)
+            # 根据层级添加标题 - 修复：title 已经包含编号
+            add_heading(doc, child['title'], level=child_level, styles=styles)
 
             # 递归处理子节点
             generate_chapter_content(doc, child, requirement_content, template_content,
@@ -2136,8 +2140,33 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
         add_heading(doc, '项目编审人员名单', level=1, styles=styles)
         doc.add_page_break()
 
-        # 目录 - 使用自动目录（TOC 域）
-        add_toc(doc, styles=styles)
+        # 目录 - 手动生成（修复 TOC 域收集错误标题的问题）
+        add_heading(doc, '目录', level=1, styles=styles)
+        doc.add_paragraph()
+        
+        def render_toc_entry(node, level=0):
+            """递归渲染目录条目"""
+            node_title = node.get('title', '')
+            children = node.get('children', [])
+            
+            # 添加目录条目
+            para = doc.add_paragraph()
+            para.paragraph_format.left_indent = Cm(0.74 * level)
+            run = para.add_run(node_title)
+            run.font.name = '宋体'
+            run.font.size = Pt(10.5)
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
+            
+            # 递归处理子章节
+            if children:
+                for child in children:
+                    render_toc_entry(child, level + 1)
+        
+        # 渲染所有一级章节的目录
+        for chapter in user_chapters:
+            render_toc_entry(chapter, level=0)
+
+        doc.add_page_break()
 
         doc_container['doc'] = doc
         save_partial_document()
@@ -2168,7 +2197,7 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
             if task_info and task_info.status == 'cancelled':
                 print(f'[CANCEL] 任务已取消，停止生成')
                 return
-            
+
             # 检查是否暂停
             if task_info and task_info.status == 'paused':
                 print(f'[PAUSE] 任务已暂停，等待继续...')
@@ -2183,7 +2212,9 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
                         break
 
             if children:
-                # 有子节点，递归处理
+                # 有子节点，先添加当前章节标题
+                add_heading(doc, node_title, level=level, styles=styles)
+                # 递归处理子节点
                 for child in children:
                     # 每次递归前检查取消状态
                     task_info = task_manager.load_task_info(task_id)
@@ -2198,7 +2229,8 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
                     if existing_chapter.status == 'completed' and existing_chapter.content:
                         # 已经有内容且完成，跳过重新生成，直接使用已有内容
                         print(f'[INFO] 章节 {node_index} "{node_title}" 已完成，跳过重新生成')
-                        add_heading(doc, f"{node.get('number', '')} {node_title}", level=level, styles=styles)
+                        # 修复：title 已经包含编号
+                        add_heading(doc, node_title, level=level, styles=styles)
                         for para_text in existing_chapter.content.split('\n'):
                             if para_text.strip():
                                 add_normal_paragraph(doc, para_text.strip(), styles=styles)
@@ -2213,7 +2245,8 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
 
                 task_manager.update_chapter_status(task_id, node_index, status='generating')
 
-                add_heading(doc, f"{node.get('number', '')} {node_title}", level=level, styles=styles)
+                # 修复：title 已经包含编号
+                add_heading(doc, node_title, level=level, styles=styles)
 
                 # 生成内容
                 # Ollama 本地模型不需要 API Key
