@@ -53,6 +53,22 @@ DEFAULT_STYLES = {
         'space_before_pt': 6,
         'space_after_pt': 3
     },
+    'heading5': {
+        'font': '黑体',
+        'size_pt': 11,
+        'bold': True,
+        'alignment': 'left',
+        'space_before_pt': 3,
+        'space_after_pt': 2
+    },
+    'heading6': {
+        'font': '黑体',
+        'size_pt': 10,
+        'bold': True,
+        'alignment': 'left',
+        'space_before_pt': 2,
+        'space_after_pt': 1
+    },
     'normal': {
         'font': '仿宋',
         'size_pt': 12,
@@ -513,7 +529,7 @@ def generate_plan_from_config(chapters=None, styles=None, project_info=None,
         children = node.get('children')
         
         # 添加标题（使用配置的样式）
-        if node_level <= 4:
+        if node_level <= 6:  # 支持到 6 级标题
             add_heading(doc, f"{node_number} {node_title}", level=node_level, styles=styles)
         
         # 判断是否有子节点

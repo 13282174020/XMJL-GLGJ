@@ -29,7 +29,7 @@ class ModelProvider(Enum):
 @dataclass
 class ModelConfig:
     """模型配置"""
-    id: str                              # 配置ID
+    id: str                              # 配置 ID
     name: str                            # 显示名称
     provider: str                        # 提供商
     model: str                           # 模型名称
@@ -41,13 +41,18 @@ class ModelConfig:
     enabled: bool = True                 # 是否启用
     description: str = ""                # 描述
     headers: Dict[str, str] = field(default_factory=dict)  # 自定义请求头
-    request_format: str = "openai"       # 请求格式: openai, dashscope, custom
+    request_format: str = "openai"       # 请求格式：openai, dashscope, custom
     response_path: str = "choices.0.message.content"  # 响应内容提取路径
-    
+
+    @property
+    def provider_id(self) -> str:
+        """兼容旧代码：provider_id 是 provider 的别名"""
+        return self.provider
+
     def to_dict(self) -> Dict:
         """转换为字典"""
         return asdict(self)
-    
+
     @classmethod
     def from_dict(cls, data: Dict) -> 'ModelConfig':
         """从字典创建"""
@@ -236,21 +241,51 @@ PRESET_MODELS = {
         request_format="openai",
         response_path="choices.0.message.content"
     ),
+    "qwen2.5-14b-instruct": ModelConfig(
+        id="qwen2.5-14b-instruct",
+        name="Qwen2.5-14B-Instruct",
+        provider=ModelProvider.OLLAMA.value,
+        model="modelscope.cn/Qwen/Qwen2.5-14B-Instruct-GGUF:Q6_K",
+        api_key="",
+        base_url="http://localhost:11434/api/chat",
+        max_tokens=4000,
+        temperature=0.5,
+        timeout=300,
+        enabled=True,
+        description="本地 Ollama 部署的通义千问 2.5-14B 指令微调模型 Q6_K 量化版本",
+        request_format="ollama",
+        response_path="message.content"
+    ),
+    "qwen3-14b-instruct": ModelConfig(
+        id="qwen3-14b-instruct",
+        name="Ophiuchi-Qwen3-14B-Instruct",
+        provider=ModelProvider.OLLAMA.value,
+        model="modelscope.cn/mradermacher/Ophiuchi-Qwen3-14B-Instruct-i1-GGUF:i1-Q6_K",
+        api_key="",
+        base_url="http://localhost:11434/api/chat",
+        max_tokens=4000,
+        temperature=0.5,
+        timeout=300,
+        enabled=True,
+        description="本地 Ollama 部署的 Ophiuchi-Qwen3-14B-Instruct i1-Q6_K 量化版本",
+        request_format="ollama",
+        response_path="message.content"
+    ),
 }
 
 
 class ModelConfigManager:
     """模型配置管理器"""
-    
+
     def __init__(self):
         self.configs: Dict[str, ModelConfig] = {}
         self._load_configs()
-    
+
     def _load_configs(self):
         """加载配置"""
         # 先加载预设配置
         self.configs = {k: v for k, v in PRESET_MODELS.items()}
-        
+
         # 加载用户保存的配置（覆盖预设）
         if os.path.exists(CONFIG_FILE):
             try:
@@ -260,8 +295,8 @@ class ModelConfigManager:
                         self.configs[config_id] = ModelConfig.from_dict(config_data)
                 print(f'[INFO] 已加载 {len(data)} 个模型配置')
             except Exception as e:
-                print(f'[ERROR] 加载模型配置失败: {e}')
-    
+                print(f'[ERROR] 加载模型配置失败：{e}')
+
     def save_configs(self):
         """保存配置到文件"""
         try:
@@ -271,26 +306,26 @@ class ModelConfigManager:
             print(f'[INFO] 已保存 {len(data)} 个模型配置')
             return True
         except Exception as e:
-            print(f'[ERROR] 保存模型配置失败: {e}')
+            print(f'[ERROR] 保存模型配置失败：{e}')
             return False
-    
+
     def get_config(self, config_id: str) -> Optional[ModelConfig]:
         """获取配置"""
         return self.configs.get(config_id)
-    
+
     def get_all_configs(self) -> Dict[str, ModelConfig]:
         """获取所有配置"""
         return self.configs.copy()
-    
+
     def get_enabled_configs(self) -> Dict[str, ModelConfig]:
         """获取启用的配置"""
         return {k: v for k, v in self.configs.items() if v.enabled}
-    
+
     def add_config(self, config: ModelConfig) -> bool:
         """添加配置"""
         self.configs[config.id] = config
         return self.save_configs()
-    
+
     def update_config(self, config_id: str, **kwargs) -> bool:
         """更新配置"""
         if config_id not in self.configs:
@@ -300,14 +335,14 @@ class ModelConfigManager:
             if hasattr(config, key):
                 setattr(config, key, value)
         return self.save_configs()
-    
+
     def delete_config(self, config_id: str) -> bool:
         """删除配置"""
         if config_id in self.configs:
             del self.configs[config_id]
             return self.save_configs()
         return False
-    
+
     def get_config_list(self) -> List[Dict]:
         """获取配置列表（用于前端展示）"""
         return [

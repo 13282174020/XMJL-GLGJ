@@ -206,5 +206,37 @@
     "headers": {},
     "request_format": "ollama",
     "response_path": "message.content"
+  },
+  "qwen2.5-14b-instruct": {
+    "id": "qwen2.5-14b-instruct",
+    "name": "Qwen2.5-14B-Instruct",
+    "provider": "ollama",
+    "model": "modelscope.cn/Qwen/Qwen2.5-14B-Instruct-GGUF:Q6_K",
+    "api_key": "",
+    "base_url": "http://localhost:11434/api/chat",
+    "max_tokens": 4000,
+    "temperature": 0.5,
+    "timeout": 300,
+    "enabled": true,
+    "description": "本地 Ollama 部署的通义千问 2.5-14B 指令微调模型 Q6_K 量化版本",
+    "headers": {},
+    "request_format": "ollama",
+    "response_path": "message.content"
+  },
+  "qwen3-14b-instruct": {
+    "id": "qwen3-14b-instruct",
+    "name": "Ophiuchi-Qwen3-14B-Instruct",
+    "provider": "ollama",
+    "model": "modelscope.cn/mradermacher/Ophiuchi-Qwen3-14B-Instruct-i1-GGUF:i1-Q6_K",
+    "api_key": "",
+    "base_url": "http://localhost:11434/api/chat",
+    "max_tokens": 4000,
+    "temperature": 0.5,
+    "timeout": 300,
+    "enabled": true,
+    "description": "本地 Ollama 部署的 Ophiuchi-Qwen3-14B-Instruct i1-Q6_K 量化版本",
+    "headers": {},
+    "request_format": "ollama",
+    "response_path": "message.content"
   }
 }

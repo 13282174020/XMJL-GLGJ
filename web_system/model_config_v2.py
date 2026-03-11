@@ -340,6 +340,24 @@ PRESET_PROVIDERS = {
                 "description": "Ollama 本地部署的 DeepSeek-R1-Distill-Qwen-14B-GGUF Q6_K 量化模型（更高精度）"
             },
             {
+                "id": "ollama-qwen2.5-14b-instruct",
+                "name": "Qwen2.5-14B-Instruct (Ollama)",
+                "type": "text",
+                "model": "modelscope.cn/Qwen/Qwen2.5-14B-Instruct-GGUF:Q6_K",
+                "max_tokens": 4000,
+                "temperature": 0.5,
+                "description": "Ollama 本地部署的通义千问 2.5-14B 指令微调模型 Q6_K 量化版本"
+            },
+            {
+                "id": "ollama-qwen3-14b-instruct",
+                "name": "Qwen3-14B-Instruct (Ollama)",
+                "type": "text",
+                "model": "modelscope.cn/mradermacher/Ophiuchi-Qwen3-14B-Instruct-i1-GGUF:i1-Q6_K",
+                "max_tokens": 4000,
+                "temperature": 0.5,
+                "description": "Ollama 本地部署的 Ophiuchi-Qwen3-14B-Instruct i1-Q6_K 量化版本"
+            },
+            {
                 "id": "ollama-llama3",
                 "name": "Llama3 (Ollama)",
                 "type": "text",

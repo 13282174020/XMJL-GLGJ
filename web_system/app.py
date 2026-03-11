@@ -1339,6 +1339,24 @@ def load_style_config():
             'bold': True,
             'alignment': 'left'
         },
+        'heading4': {
+            'font_name': '黑体',
+            'font_size': 12,
+            'bold': True,
+            'alignment': 'left'
+        },
+        'heading5': {
+            'font_name': '黑体',
+            'font_size': 11,
+            'bold': True,
+            'alignment': 'left'
+        },
+        'heading6': {
+            'font_name': '黑体',
+            'font_size': 10,
+            'bold': True,
+            'alignment': 'left'
+        },
         'normal': {
             'font_name': '仿宋',
             'font_size': 10.5,
@@ -1420,17 +1438,30 @@ def add_heading(doc, text, level=1, styles=None):
         heading.paragraph_format.space_after = Cm(0.3)
         
     elif level == 4:
-        style = styles.get('heading3', {})
+        style = styles.get('heading4', {})
         heading = doc.add_paragraph()
         run = heading.add_run(text)
-        run.font.name = style.get('font_name', '楷体')
-        run.font.size = Pt(style.get('font_size', 14))
+        run.font.name = style.get('font_name', '黑体')
+        run.font.size = Pt(style.get('font_size', 12))
         run.font.bold = style.get('bold', True)
-        run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '楷体'))
-        heading.paragraph_format.first_line_indent = Cm(0.74)
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '黑体'))
+        heading.paragraph_format.first_line_indent = Cm(0)
         heading.paragraph_format.space_before = Cm(0)
         heading.paragraph_format.space_after = Cm(0)
-        
+
+    elif level >= 5:
+        # 5 级及以上标题，使用更小的字体
+        style = styles.get('heading5', styles.get('heading4', {}))
+        heading = doc.add_paragraph()
+        run = heading.add_run(text)
+        run.font.name = style.get('font_name', '黑体')
+        run.font.size = Pt(style.get('font_size', 11))
+        run.font.bold = style.get('bold', True)
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '黑体'))
+        heading.paragraph_format.first_line_indent = Cm(0)
+        heading.paragraph_format.space_before = Cm(0)
+        heading.paragraph_format.space_after = Cm(0)
+
     return heading
 
 
@@ -3500,6 +3531,24 @@ def load_styles():
                 'heading3': {
                     'font_name': '楷体',
                     'font_size': 14,
+                    'bold': True,
+                    'alignment': 'left'
+                },
+                'heading4': {
+                    'font_name': '黑体',
+                    'font_size': 12,
+                    'bold': True,
+                    'alignment': 'left'
+                },
+                'heading5': {
+                    'font_name': '黑体',
+                    'font_size': 11,
+                    'bold': True,
+                    'alignment': 'left'
+                },
+                'heading6': {
+                    'font_name': '黑体',
+                    'font_size': 10,
                     'bold': True,
                     'alignment': 'left'
                 },
