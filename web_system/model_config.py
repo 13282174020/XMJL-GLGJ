@@ -372,8 +372,32 @@ def get_model_config_manager() -> ModelConfigManager:
 
 
 def get_model_config(config_id: str) -> Optional[ModelConfig]:
-    """获取模型配置"""
-    return get_model_config_manager().get_config(config_id)
+    """获取模型配置
+    
+    支持多种 ID 格式兼容：
+    - 直接匹配：qwen3-14b-instruct
+    - ollama 前缀：ollama-qwen3-14b-instruct -> qwen3-14b-instruct
+    """
+    # 首先尝试直接匹配
+    config = get_model_config_manager().get_config(config_id)
+    if config:
+        return config
+    
+    # 如果找不到，尝试移除 ollama- 前缀后再次匹配
+    if config_id.startswith('ollama-'):
+        config_id_without_prefix = config_id[7:]  # 移除 'ollama-'
+        config = get_model_config_manager().get_config(config_id_without_prefix)
+        if config:
+            return config
+    
+    # 也尝试添加 ollama- 前缀后匹配（反向兼容）
+    if not config_id.startswith('ollama-'):
+        config_id_with_prefix = 'ollama-' + config_id
+        config = get_model_config_manager().get_config(config_id_with_prefix)
+        if config:
+            return config
+    
+    return None
 
 
 def get_enabled_models() -> List[Dict]:
