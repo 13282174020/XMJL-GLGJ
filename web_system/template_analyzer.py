@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""模板文档分析器模块"""
+"""模板文档分析器模块 - 修复版"""
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Set
+from typing import Dict, List
 from collections import defaultdict
 
 
@@ -31,7 +31,28 @@ class AnalysisReport:
     heading_styles: Dict[str, StyleAnalysis] = field(default_factory=dict)
     potential_heading_styles: List[str] = field(default_factory=list)
     
-    def generate_mapping_rules(self) -> List[dict]:
+    def to_dict(self):
+        """转换为字典格式"""
+        return {
+            'file_path': self.file_path,
+            'total_paragraphs': self.total_paragraphs,
+            'styles_usage': self.styles_usage,
+            'heading_styles': {
+                k: {
+                    'style_name': v.style_name,
+                    'is_heading': v.is_heading,
+                    'heading_level': v.heading_level,
+                    'numbering_patterns': {
+                        pk: {'pattern': pv.pattern, 'suggested_level': pv.suggested_level, 'count': pv.count}
+                        for pk, pv in v.numbering_patterns.items()
+                    }
+                } for k, v in self.heading_styles.items()
+            },
+            'potential_heading_styles': self.potential_heading_styles
+        }
+    
+    def generate_mapping_rules(self):
+        """生成样式映射规则"""
         rules = []
         for style_name, analysis in self.heading_styles.items():
             if analysis.is_heading and analysis.heading_level > 0:
@@ -57,6 +78,8 @@ class AnalysisReport:
 
 
 class DocumentAnalyzer:
+    """文档分析器"""
+    
     def __init__(self):
         self.numbering_regex_patterns = [
             (r'^(\d+)\.(\d+)\.(\d+)\.(\d+)', 4),
@@ -66,6 +89,7 @@ class DocumentAnalyzer:
         ]
     
     def analyze(self, file_path: str) -> AnalysisReport:
+        """分析文档"""
         from docx import Document
         doc = Document(file_path)
         styles_usage = defaultdict(int)
@@ -107,11 +131,14 @@ class DocumentAnalyzer:
             heading_styles[style_name].numbering_patterns = style_numbering.get(style_name, {})
         
         return AnalysisReport(
-            file_path=file_path, total_paragraphs=len(doc.paragraphs),
-            styles_usage=dict(styles_usage), heading_styles=heading_styles,
+            file_path=file_path,
+            total_paragraphs=len(doc.paragraphs),
+            styles_usage=dict(styles_usage),
+            heading_styles=heading_styles,
             potential_heading_styles=list(potential_heading_styles))
     
     def _get_heading_level(self, style_name: str, text: str = '') -> int:
+        """获取标题级别"""
         if not style_name:
             return 0
         style_lower = style_name.lower()
