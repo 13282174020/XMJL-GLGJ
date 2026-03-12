@@ -250,3 +250,158 @@ if __name__ == '__main__':
 with open('tests/test_template_analyzer.py', 'w', encoding='utf-8') as f:
     f.write(analyzer_test_content)
 print('OK: tests/test_template_analyzer.py')
+
+# 创建预处理引擎模块
+preprocessor_content = '''# -*- coding: utf-8 -*-
+"""模板预处理引擎模块"""
+import re
+from pathlib import Path
+from dataclasses import dataclass
+from typing import List, Optional, Dict
+from docx import Document
+
+
+@dataclass
+class PreprocessResult:
+    success: bool
+    output_path: Optional[str]
+    message: str
+    stats: Dict[str, int]
+    
+    def to_dict(self):
+        return {'success': self.success, 'output_path': self.output_path, 
+                'message': self.message, 'stats': self.stats}
+
+
+class TemplatePreprocessor:
+    def __init__(self):
+        self.standard_styles = ['Heading 1', 'Heading 2', 'Heading 3', 
+                                'Heading 4', 'Heading 5', 'Heading 6', 'Normal']
+    
+    def preprocess(self, input_path: str, output_path: str, 
+                   rules: List[dict]) -> PreprocessResult:
+        try:
+            doc = Document(input_path)
+            stats = {}
+            
+            compiled_rules = []
+            for rule in rules:
+                compiled_rule = rule.copy()
+                if rule.get('pattern'):
+                    try:
+                        compiled_rule['compiled_pattern'] = re.compile(rule['pattern'])
+                    except re.error as e:
+                        return PreprocessResult(False, None, f'正则错误：{e}', {})
+                compiled_rules.append(compiled_rule)
+            
+            for para in doc.paragraphs:
+                text = para.text.strip()
+                if not text:
+                    continue
+                current_style = para.style.name if para.style else 'Normal'
+                new_style = self._apply_rules(current_style, text, compiled_rules)
+                
+                if new_style and new_style != current_style:
+                    para.style = new_style
+                    key = f'{current_style}->{new_style}'
+                    stats[key] = stats.get(key, 0) + 1
+                else:
+                    stats['unchanged'] = stats.get('unchanged', 0) + 1
+            
+            output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            doc.save(str(output_path))
+            
+            total = sum(v for k, v in stats.items() if k != 'unchanged')
+            return PreprocessResult(True, str(output_path), 
+                                   f'处理完成，{total} 个段落已转换', stats)
+        except Exception as e:
+            return PreprocessResult(False, None, f'处理失败：{e}', {})
+    
+    def _apply_rules(self, style_name: str, text: str, rules: List[dict]) -> Optional[str]:
+        for rule in rules:
+            if rule['source_style'] != style_name:
+                continue
+            if rule.get('compiled_pattern'):
+                if rule['compiled_pattern'].match(text):
+                    return rule['target_style']
+            elif rule.get('pattern') is None:
+                return rule['target_style']
+        return None
+    
+    def preprocess_with_analysis(self, input_path: str, output_path: str) -> PreprocessResult:
+        from template_analyzer import DocumentAnalyzer
+        analyzer = DocumentAnalyzer()
+        report = analyzer.analyze(input_path)
+        rules = report.generate_mapping_rules()
+        return self.preprocess(input_path, output_path, rules)
+
+
+def preprocess_template(input_path: str, output_path: str, 
+                       rules: List[dict]) -> PreprocessResult:
+    preprocessor = TemplatePreprocessor()
+    return preprocessor.preprocess(input_path, output_path, rules)
+'''
+
+with open('web_system/template_preprocessor.py', 'w', encoding='utf-8') as f:
+    f.write(preprocessor_content)
+print('OK: web_system/template_preprocessor.py')
+
+# 创建预处理引擎测试文件
+preprocessor_test_content = '''# -*- coding: utf-8 -*-
+"""预处理引擎测试"""
+import pytest
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / 'web_system'))
+
+from template_preprocessor import TemplatePreprocessor, preprocess_template
+
+
+class TestTemplatePreprocessor:
+    def test_preprocess_with_rules(self, sample_nonstandard_doc, output_dir):
+        analyzer = __import__('template_analyzer', fromlist=['DocumentAnalyzer'])
+        analyzer_instance = analyzer.DocumentAnalyzer()
+        report = analyzer_instance.analyze(str(sample_nonstandard_doc))
+        rules = report.generate_mapping_rules()
+        
+        preprocessor = TemplatePreprocessor()
+        output_path = output_dir / 'processed.docx'
+        result = preprocessor.preprocess(str(sample_nonstandard_doc), str(output_path), rules)
+        
+        assert result.success is True
+        assert output_path.exists()
+        print(f"预处理成功：{result.message}")
+        print(f"统计：{result.stats}")
+    
+    def test_preprocess_with_analysis(self, sample_nonstandard_doc, output_dir):
+        preprocessor = TemplatePreprocessor()
+        output_path = output_dir / 'processed_auto.docx'
+        result = preprocessor.preprocess_with_analysis(str(sample_nonstandard_doc), str(output_path))
+        
+        assert result.success is True
+        assert output_path.exists()
+        print(f"自动预处理成功：{result.message}")
+    
+    def test_preprocess_standard_doc(self, sample_standard_doc, output_dir):
+        preprocessor = TemplatePreprocessor()
+        output_path = output_dir / 'processed_standard.docx'
+        
+        analyzer = __import__('template_analyzer', fromlist=['DocumentAnalyzer'])
+        report = analyzer.DocumentAnalyzer().analyze(str(sample_standard_doc))
+        rules = report.generate_mapping_rules()
+        
+        result = preprocessor.preprocess(str(sample_standard_doc), str(output_path), rules)
+        
+        assert result.success is True
+        print(f"标准文档预处理：{result.message}")
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])
+'''
+
+with open('tests/test_template_preprocessor.py', 'w', encoding='utf-8') as f:
+    f.write(preprocessor_test_content)
+print('OK: tests/test_template_preprocessor.py')
