@@ -1,0 +1,21 @@
+{
+  "task_id": "7ac628d88c154cdd87bef23c1712c73e",
+  "template_type": "future_community",
+  "user_prompt": "",
+  "model": "ollama-qwen3-14b-instruct",
+  "status": "generating",
+  "progress": 71,
+  "message": "文档生成成功",
+  "current_chapter_index": null,
+  "total_chapters": 154,
+  "completed_chapters": 110,
+  "failed_chapters": [],
+  "created_at": "2026-03-12 11:24:30",
+  "updated_at": "2026-03-12 12:56:07",
+  "started_at": "2026-03-12 11:24:30",
+  "completed_at": "2026-03-12 11:49:25",
+  "requirement_filename": "docx.docx",
+  "template_filename": "docx.docx",
+  "output_filename": "future_community_可行性研究报告_7ac628d8.docx",
+  "partial_filename": null
+}

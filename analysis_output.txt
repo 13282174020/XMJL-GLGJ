@@ -1,0 +1,196 @@
+================================================================================
+1. 文档中使用的所有样式名称
+================================================================================
+  - BZ_正文
+  - Body Text
+  - Body Text First Indent
+  - Body Text First Indent 2
+  - Heading 1
+  - Normal
+
+共 6 种样式
+
+================================================================================
+2. 前 50 个非空段落（样式名 + 文本内容前 30 字）
+================================================================================
+  1. [Normal] 临平区数字慈善系统建设项目
+  2. [Normal] 系统实施方案
+  3. [Normal] 作者：   洪国彦             日期：  202...
+  4. [Normal] 审核：   李  军             日期：  20...
+  5. [Normal] 批准：   陈绍强             日期：  202...
+  6. [Normal] 中国电信股份有限公司杭州分公司
+  7. [Normal] 2024年01月
+  8. [Heading 1] 项目的基本概述
+  9. [Body Text First Indent 2] 项目名称：
+ 10. [Body Text First Indent 2] 临平区数字慈善系统建设项目
+ 11. [Body Text First Indent 2] 项目性质：
+ 12. [Body Text First Indent 2] 新建
+ 13. [Body Text First Indent 2] 项目承担单位：
+ 14. [Body Text First Indent 2] 杭州临平大数据经营有限公司
+ 15. [Body Text First Indent 2] 总投资
+ 16. [Body Text First Indent 2] ￥454,800.00元
+ 17. [Body Text First Indent 2] 项目建设内容一览表
+ 18. [Body Text First Indent 2] （一）软件系统
+ 19. [Heading 1] 现状、必要性和需求分析
+ 20. [Body Text First Indent 2] 2.1 建设背景
+ 21. [Body Text First Indent 2] 从国际形势现况来看，当今世界正经历百年未有之大变局，全球治理...
+ 22. [Body Text First Indent 2] 与此同时，中国的发展也进入了转型关键期，大力发展公益慈善事业...
+ 23. [Body Text First Indent 2] 国际秩序处在关键路口，中国发展进入关键时期，在社会出现新的利...
+ 24. [Body Text First Indent 2] 2021年6月10日，《中共中央国务院关于支持浙江高质量发展...
+ 25. [Body Text First Indent 2] 临平数字公益慈善项目的建设将成为本地区构建“共富”和“美丽”...
+ 26. [Body Text First Indent 2] 2.2 项目建设的必要性
+ 27. [Body Text First Indent 2] 2.2.1 公益慈善事业发展线上化
+ 28. [Body Text First Indent 2] 随着互联网技术的发展，公益慈善线上化将成为未来趋势。公益慈善...
+ 29. [Body Text First Indent 2] 2.2.2 现有操作系统的不足
+ 30. [Body Text First Indent 2] 目前，临平区慈善总会及临平区社会工作联合会仍然在使用浙江省慈...
+ 31. [Body Text First Indent 2] 2.2.3 新平台的开发满足实际需求和日常操作的便捷要求
+ 32. [Body Text First Indent 2] 新的数字公益慈善平台将着重打造移动端慈善，以提高社会公众参与...
+ 33. [Body Text First Indent 2] 2.3 项目建设的依据
+ 34. [Body Text First Indent 2] 2.3.1 相关政策文件
+ 35. [Body Text First Indent 2] 《“互联网+民政服务”行动计划》
+ 36. [Body Text First Indent 2] 《浙江省实施<中华人民共和国慈善法>办法》
+ 37. [Body Text First Indent 2] 《中共浙江省委浙江省人民政府关于推进新时代民政事业高质量发展...
+ 38. [Body Text First Indent 2] 《中共浙江省委办公厅、浙江省人民政府办公厅印发<关于加快推进...
+ 39. [Body Text First Indent 2] 《浙江省人民政府办公厅关于印发浙江省数字赋能促进新业态新模式...
+ 40. [Body Text First Indent 2] 《中共杭州市委 杭州市人民政府关于着力打造六大示范区推进新时...
+ 41. [Body Text First Indent 2] 《中共杭州市余杭区委 杭州市余杭区人民政府关于着力打造四个排...
+ 42. [Body Text First Indent 2] 《临平区数字化改革总体方案》
+ 43. [Body Text First Indent 2] 《中共杭州市临平区委办公室抄告单<陈如根同志批示>》
+ 44. [Body Text First Indent 2] 《临平区民政局民政专报<施华淼区长批示>》
+ 45. [Body Text First Indent 2] 2.3.2 相关领导发言
+ 46. [Body Text First Indent 2] （1）习近平总书记：
+ 47. [Body Text First Indent 2] “人民对美好生活的向往，就是我们的奋斗目标”
+ 48. [Body Text First Indent 2] “民政工作关系民生、连着民心，是社会建设的兜底性、基础性工作...
+ 49. [Body Text First Indent 2] 2016年3月，签署主席令第四十三号，发布《慈善法》
+ 50. [Body Text First Indent 2] （2）民政部：
+
+================================================================================
+3. 包含数字编号的段落（如 1.、1.1、第一章等）
+================================================================================
+  1. [Body Text First Indent 2] 2.1 建设背景
+  2. [Body Text First Indent 2] 2.2 项目建设的必要性
+  3. [Body Text First Indent 2] 2.2.1 公益慈善事业发展线上化
+  4. [Body Text First Indent 2] 2.2.2 现有操作系统的不足
+  5. [Body Text First Indent 2] 2.2.3 新平台的开发满足实际需求和日常操作的便捷要求
+  6. [Body Text First Indent 2] 2.3 项目建设的依据
+  7. [Body Text First Indent 2] 2.3.1 相关政策文件
+  8. [Body Text First Indent 2] 2.3.2 相关领导发言
+  9. [Body Text First Indent 2] 2.4 需求分析
+ 10. [Body Text First Indent 2] 2.4.1 项目的服务对象和服务范围
+ 11. [Body Text First Indent 2] 2.4.2 项目与已有系统的关系分析
+ 12. [Body Text First Indent 2] 2.4.3 项目的性能需求
+ 13. [Body Text First Indent 2] 2.4.4 项目的安全需求
+ 14. [Body Text First Indent 2] 3.1 建设原则
+ 15. [Body Text First Indent 2] 3.1.1 先进性原则
+ 16. [Body Text First Indent 2] 3.1.2 安全性原则
+ 17. [Body Text First Indent 2] 3.1.3 标准化原则
+ 18. [Body Text First Indent 2] 3.1.4 可扩展原则
+ 19. [Body Text First Indent 2] 3.1.5 模块化原则
+ 20. [Body Text First Indent 2] 3.1.6 稳定性原则
+ 21. [Body Text First Indent 2] 3.1.7 易用性原则
+ 22. [Body Text First Indent 2] 3.1.8 经济性原则
+ 23. [Body Text First Indent 2] 3.2 目标内容
+ 24. [Body Text First Indent 2] 4.1 项目的总体架构
+ 25. [Body Text First Indent 2] 4.1.1 数字慈善系统总体框架
+ 26. [Body Text First Indent 2] 4.管理后台
+ 27. [Body Text First Indent 2] 4. 浙政钉
+ 28. [Body Text First Indent 2] 4. 浙里办
+ 29. [Body Text First Indent 2] 4. 安全开发规范
+ 30. [Body Text First Indent 2] 4..1 代码安全
+ 31. [Normal] 4..1.1 身份鉴别
+ 32. [Body Text First Indent 2] 1.用户凭据必须经过加密且以POST方式提交,使用HTPS协议来加密通道、认证服务端；
+ 33. [Body Text First Indent 2] 2.安全地处理失败的身份校验,如使用"用户名或密码错误"来提示失败,防止泄露过多信息；
+ 34. [Body Text First Indent 2] 3.登录入口应具有防止暴力或撞库猜解(利用已泄露的密码字典进行批量登录尝试)的措施,超过1次验证失败自动启用图灵测试,超过多次验证失败自动启用账户锁定机制限制其...
+ 35. [Body Text First Indent 2] 4.在执行关键操作(如账户密码修改、资料更新、交易支付、查看关键信息等)时,先启动图灵测试,再对用户身份进行二次验证。交易支付过程还应该形成完整的证据链,待交易...
+ 36. [Body Text First Indent 2] 5.高度敏感或核心的业务系统,建议使用多因子身份验证机制,如短信验证码、软硬件 Token等；
+ 37. [Body Text First Indent 2] 6.禁止在响应中返回验证码,服务器端同时校验密码、短信验证码等凭证信息,防止出现多阶段认证绕过的漏洞。
+ 38. [Normal] 4..1.2 密码管理
+ 39. [Body Text First Indent 2] 1.密码设置时,应该满足8位及以上长度,含大小写字母、数字及特殊字符等的要求。用户密码设置必须经过后端验,不允许设置不满定复杂度要求的感密码；
+ 40. [Body Text First Indent 2] 2.用户密码存储时,采用国密算法进行加密存储，或者使用国际安全算法进行加密存储；
+ 41. [Body Text First Indent 2] 3.用户修改密码时,修改操作需要通过手机号或者邮箱地均进行一次身份验证。密码变更时,应短信或者邮件通知如用户是否是本人操作,告知其安全风险；
+ 42. [Body Text First Indent 2] 4.用户密码找回时,后端需要对注册手机号或邮箱进行二次验证,验证码和验证链接应发送至预先注册的地址,并设置有效期以防止暴力破解。密保问题,应当支持尽可能随机的问...
+ 43. [Body Text First Indent 2] 4..2 数据安全
+ 44. [Normal] 4..2.1 数据完整性
+ 45. [Body Text First Indent 2] 1.采用校验技术或密码技术保证重要数据在传输过程中的完整性，包括但不限于鉴别数据、重要业务数据、重要审计数据、重要配置数据、重要视频数据和重要个人信息等；
+ 46. [Body Text First Indent 2] 2.采用校验技术或密码技术保证重要数据在存储过程中的完整性，包括但不限于鉴别数据、重要业务数据、重要审计数据、重要配置数据、重要视频数据和重要个人信息等；
+ 47. [Body Text First Indent 2] 3.根据行业要求以及个人信息法的要求，对收集到的信息进行分类分级，并根据不同级别的数据进行分类加密和存储。
+ 48. [Normal] 4..2.1 数据保密性
+ 49. [Body Text First Indent 2] 1.密码技术保证重要数据在传输过程中的保密性，包括但不限于鉴别数据、重要业务数据和重要个人信息等；
+ 50. [Body Text First Indent 2] 2.采用密码技术保证重要数据在存储过程中的保密性，包括但不限于鉴别数据、重要业务数据和重要个人信息等；
+ 51. [Body Text First Indent 2] 3.根据行业要求以及个人信息法的要求，对收集到的信息进行分类分级，并根据不同级别的数据进行分类加密和展示。
+ 52. [Normal] 4..2. 数据可读性
+ 53. [Body Text First Indent 2] 1.采用不同的数据脱敏方式对不同等级的数据进行相应的展示，对于重要数据和敏感数据，在数据脱敏前进行第二次身份验证，对于特殊数据和非常敏感数据，需要通过权限申请流...
+ 54. [Body Text First Indent 2] 4..3 通信安全
+ 55. [Body Text First Indent 2] 1.采用校验技术或密码技术保证通信过程中数据的完整性；
+ 56. [Body Text First Indent 2] 2.采用密码技术保证通信过程中数据的保密性。
+ 57. [Normal] 4..3.1 身份鉴别
+ 58. [Body Text First Indent 2] 1.用户凭据必须经过加密且以POST方式提交,使用HTPS协议来加密通道、认证服务端；
+ 59. [Body Text First Indent 2] 2.安全地处理失败的身份校验,如使用"用户名或密码错误"来提示失败,防止泄露过多信息；
+ 60. [Body Text First Indent 2] 5. 管理后台
+ 61. [Body Text First Indent 2] 5..1 登录模块
+ 62. [Body Text First Indent 2] 5..2 待办中心
+ 63. [Body Text First Indent 2] 5..3 统计报表
+ 64. [Body Text First Indent 2] 5..4 资金库管理
+ 65. [Body Text First Indent 2] 5..5 物资管理
+ 66. [Body Text First Indent 2] 5..6 慈善项目
+ 67. [Body Text First Indent 2] 5..7 慈善救助
+ 68. [Body Text First Indent 2] 5..8 综合查询
+ 69. [Body Text First Indent 2] 5..9 内容管理
+ 70. [Body Text First Indent 2] 5.2.1 会员之家
+ 71. [Body Text First Indent 2] 5..1 开票中心
+ 72. [Body Text First Indent 2] 5..1 系统设置
+ 73. [Body Text First Indent 2] 5. 浙政钉
+ 74. [Body Text First Indent 2] 5..1 主页
+ 75. [Body Text First Indent 2] 5..2 待办中心
+ 76. [Body Text First Indent 2] 5..3 物资管理
+ 77. [Body Text First Indent 2] 5..4 资金库管理
+ 78. [Body Text First Indent 2] 5. 浙里办
+ 79. [Body Text First Indent 2] 5..1 登录模块
+ 80. [Body Text First Indent 2] 5..2 捐款模块
+ 81. [Body Text First Indent 2] 5.. 慈善中心
+ 82. [Body Text First Indent 2] 5.. 个人中心
+ 83. [Body Text First Indent 2] 7.1 领导和管理机构
+ 84. [Body Text First Indent 2] 7.2 项目实施机构
+ 85. [Body Text First Indent 2] 7.3 实施总体组织计划
+ 86. [Body Text First Indent 2] 7.4 实施协调与配合措施要求
+ 87. [Body Text First Indent 2] 7.4.1 与用户关系协调
+ 88. [Body Text First Indent 2] 7.4.2 技术力量和人员配置
+ 89. [Body Text First Indent 2] 7.4.3 技术服务
+ 90. [Body Text First Indent 2] 7.5 项目风险控制措施
+ 91. [Body Text First Indent 2] 7.5.1 风险管控过程
+ 92. [Body Text First Indent 2] 7.5.2 组织审核项目组《项目风险预测及应对措施报告》
+ 93. [Body Text First Indent 2] 7.5.3 监督项目组项目风险应对措施的执行
+ 94. [Body Text First Indent 2] 7.6 质量保证措施和建设工期
+ 95. [Body Text First Indent 2] 7.6.1 项目建设原则
+ 96. [Body Text First Indent 2] 7.6.2 质量控制管理
+ 97. [Body Text First Indent 2] 7.6.3 项目管理流程
+ 98. [Normal] 1.规范流程
+ 99. [Body Text First Indent 2] 8.1 项目建设工期
+100. [Body Text First Indent 2] 8.1.1 风险管理
+101. [Body Text First Indent 2] 8.2 项目成功的关键因素和风险因素分析
+102. [Body Text First Indent 2] 8.2.1 方案编制期
+103. [Body Text First Indent 2] 8.2.2 建设推进期
+104. [Body Text First Indent 2] 8.2.3 验收交付期
+105. [Body Text First Indent 2] 8.2.4 持续运营期
+106. [Body Text First Indent 2] 9.1 培训对象
+107. [Body Text First Indent 2] 9.2 培训方式及内容
+108. [Body Text First Indent 2] 9.3 培训时间
+109. [Body Text First Indent 2] 9.4 培训地点
+110. [Body Text First Indent 2] 10.1 价值与意义
+111. [Body Text First Indent 2] 10.2 经济效益
+112. [Body Text First Indent 2] 10.3 社会效益
+113. [Normal] 11.1 投资概算的有关说明
+114. [Normal] 11.2 总投资概算清单
+115. [Normal] 11.2.1 软件建设费用
+
+共 115 个包含数字编号的段落
+
+================================================================================
+4. 样式使用统计（按使用次数排序）
+================================================================================
+  Normal: 353 次
+  Body Text First Indent 2: 192 次
+  BZ_正文: 23 次
+  Body Text: 14 次
+  Heading 1: 11 次
+  Body Text First Indent: 3 次
