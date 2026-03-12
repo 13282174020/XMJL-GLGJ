@@ -821,13 +821,15 @@ def scan_template_styles(file_path):
     """
     扫描 Word 模板文件，提取章节目录结构
     严格基于 Heading 样式和 XML 编号信息提取（参考 extract_toc.py）
-    
+
     优化：支持 1-6 级目录识别
     """
     try:
         doc = Document(file_path)
         headings = []
 
+        print(f'\n[SCAN] 开始扫描模板文件：{file_path}')
+        
         # 提取所有 Heading 样式的段落
         for para in doc.paragraphs:
             text = para.text.strip()
@@ -839,6 +841,7 @@ def scan_template_styles(file_path):
             level = get_heading_level(style_name, text)
 
             if level > 0:
+                print(f'[SCAN] 检测到标题 - 级别：{level}, 样式：{style_name}, 文本：{text[:50]}')
                 headings.append({
                     'level': level,
                     'text': text,
@@ -846,11 +849,20 @@ def scan_template_styles(file_path):
                     'numbering': ''
                 })
 
+        print(f'[SCAN] 共检测到 {len(headings)} 个标题')
+        
         # 生成编号
         headings = generate_chapter_numbering(headings)
+        
+        # 打印编号后的结果
+        for h in headings:
+            print(f'[SCAN] 编号后 - 级别：{h["level"]}, 编号：{h["numbering"]}, 文本：{h["text"][:50]}')
 
         # 构建章节树
         chapters = build_chapter_tree(headings)
+        
+        print(f'[SCAN] 构建完成，共 {count_all_nodes(chapters)} 个节点')
+        print_chapter_tree(chapters, 0)
 
         return {
             'success': True,
@@ -860,12 +872,24 @@ def scan_template_styles(file_path):
         }
     except Exception as e:
         import traceback
+        print(f'[SCAN] 异常：{str(e)}')
+        print(traceback.format_exc())
         return {
             'success': False,
             'chapters': [],
             'message': f'扫描失败：{str(e)}',
             'detail': traceback.format_exc()
         }
+
+
+def print_chapter_tree(chapters, level=0):
+    """打印章节树结构（用于调试）"""
+    for chapter in chapters:
+        indent = '  ' * level
+        print(f'[TREE] {indent}L{chapter["level"]} - {chapter["number"]} - {chapter["title"][:50]}')
+        children = chapter.get('children')
+        if children:
+            print_chapter_tree(children, level + 1)
 
 
 def get_paragraph_numbering(para):
@@ -1383,9 +1407,12 @@ def add_heading(doc, text, level=1, styles=None):
     """添加标题 - 支持自定义样式配置"""
     if styles is None:
         styles = load_style_config()
-    
+
+    print(f'[HEADING] 添加标题 - level={level}, text={text[:50]}')
+
     if level == 1:
         style = styles.get('heading1', {})
+        print(f'[HEADING] L1 样式：font={style.get("font_name")}, size={style.get("font_size")}')
         heading = doc.add_heading(text, level=1)
         
         # 对齐方式
@@ -1405,59 +1432,102 @@ def add_heading(doc, text, level=1, styles=None):
         
     elif level == 2:
         style = styles.get('heading2', {})
+        print(f'[HEADING] L2 样式：font={style.get("font_name")}, size={style.get("font_size")}')
         heading = doc.add_heading(text, level=2)
-        
+
         align_map = {'center': WD_ALIGN_PARAGRAPH.CENTER, 'left': WD_ALIGN_PARAGRAPH.LEFT,
                      'right': WD_ALIGN_PARAGRAPH.RIGHT, 'justify': WD_ALIGN_PARAGRAPH.JUSTIFY}
         heading.alignment = align_map.get(style.get('alignment', 'left'), WD_ALIGN_PARAGRAPH.LEFT)
-        
+
         for run in heading.runs:
             run.font.name = style.get('font_name', '楷体')
             run.font.size = Pt(style.get('font_size', 16))
             run.font.bold = style.get('bold', True)
             run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '楷体'))
-        
+
         heading.paragraph_format.space_before = Cm(0.5)
         heading.paragraph_format.space_after = Cm(0.5)
-        
+
     elif level == 3:
         style = styles.get('heading3', {})
+        print(f'[HEADING] L3 样式：font={style.get("font_name")}, size={style.get("font_size")}')
         heading = doc.add_heading(text, level=3)
-        
+
         align_map = {'center': WD_ALIGN_PARAGRAPH.CENTER, 'left': WD_ALIGN_PARAGRAPH.LEFT,
                      'right': WD_ALIGN_PARAGRAPH.RIGHT, 'justify': WD_ALIGN_PARAGRAPH.JUSTIFY}
         heading.alignment = align_map.get(style.get('alignment', 'left'), WD_ALIGN_PARAGRAPH.LEFT)
-        
+
         for run in heading.runs:
             run.font.name = style.get('font_name', '楷体')
             run.font.size = Pt(style.get('font_size', 14))
             run.font.bold = style.get('bold', True)
             run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '楷体'))
-        
+
         heading.paragraph_format.space_before = Cm(0.3)
         heading.paragraph_format.space_after = Cm(0.3)
-        
+
     elif level == 4:
         style = styles.get('heading4', {})
-        heading = doc.add_paragraph()
-        run = heading.add_run(text)
-        run.font.name = style.get('font_name', '黑体')
-        run.font.size = Pt(style.get('font_size', 12))
-        run.font.bold = style.get('bold', True)
-        run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '黑体'))
+        print(f'[HEADING] L4 样式：font={style.get("font_name")}, size={style.get("font_size")}, bold={style.get("bold")}')
+        # 使用 add_heading 创建 Heading 4 样式，这样 Word 目录可以收集
+        heading = doc.add_heading(text, level=4)
+
+        # 对齐方式
+        align_map = {'center': WD_ALIGN_PARAGRAPH.CENTER, 'left': WD_ALIGN_PARAGRAPH.LEFT,
+                     'right': WD_ALIGN_PARAGRAPH.RIGHT, 'justify': WD_ALIGN_PARAGRAPH.JUSTIFY}
+        heading.alignment = align_map.get(style.get('alignment', 'left'), WD_ALIGN_PARAGRAPH.LEFT)
+
+        # 设置字体样式（覆盖默认的 Heading 4 样式）
+        for run in heading.runs:
+            run.font.name = style.get('font_name', '黑体')
+            run.font.size = Pt(style.get('font_size', 12))
+            run.font.bold = style.get('bold', True)
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '黑体'))
+
         heading.paragraph_format.first_line_indent = Cm(0)
         heading.paragraph_format.space_before = Cm(0)
         heading.paragraph_format.space_after = Cm(0)
 
-    elif level >= 5:
-        # 5 级及以上标题，使用更小的字体
-        style = styles.get('heading5', styles.get('heading4', {}))
-        heading = doc.add_paragraph()
-        run = heading.add_run(text)
-        run.font.name = style.get('font_name', '黑体')
-        run.font.size = Pt(style.get('font_size', 11))
-        run.font.bold = style.get('bold', True)
-        run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '黑体'))
+    elif level == 5:
+        style = styles.get('heading5', {})
+        print(f'[HEADING] L5 样式：font={style.get("font_name")}, size={style.get("font_size")}, bold={style.get("bold")}')
+        # 使用 add_heading 创建 Heading 5 样式，这样 Word 目录可以收集
+        heading = doc.add_heading(text, level=5)
+
+        # 对齐方式
+        align_map = {'center': WD_ALIGN_PARAGRAPH.CENTER, 'left': WD_ALIGN_PARAGRAPH.LEFT,
+                     'right': WD_ALIGN_PARAGRAPH.RIGHT, 'justify': WD_ALIGN_PARAGRAPH.JUSTIFY}
+        heading.alignment = align_map.get(style.get('alignment', 'left'), WD_ALIGN_PARAGRAPH.LEFT)
+
+        # 设置字体样式（覆盖默认的 Heading 5 样式）
+        for run in heading.runs:
+            run.font.name = style.get('font_name', '黑体')
+            run.font.size = Pt(style.get('font_size', 11))
+            run.font.bold = style.get('bold', True)
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '黑体'))
+
+        heading.paragraph_format.first_line_indent = Cm(0)
+        heading.paragraph_format.space_before = Cm(0)
+        heading.paragraph_format.space_after = Cm(0)
+
+    elif level == 6:
+        style = styles.get('heading6', {})
+        print(f'[HEADING] L6 样式：font={style.get("font_name")}, size={style.get("font_size")}, bold={style.get("bold")}')
+        # 使用 add_heading 创建 Heading 6 样式，这样 Word 目录可以收集
+        heading = doc.add_heading(text, level=6)
+
+        # 对齐方式
+        align_map = {'center': WD_ALIGN_PARAGRAPH.CENTER, 'left': WD_ALIGN_PARAGRAPH.LEFT,
+                     'right': WD_ALIGN_PARAGRAPH.RIGHT, 'justify': WD_ALIGN_PARAGRAPH.JUSTIFY}
+        heading.alignment = align_map.get(style.get('alignment', 'left'), WD_ALIGN_PARAGRAPH.LEFT)
+
+        # 设置字体样式（覆盖默认的 Heading 6 样式）
+        for run in heading.runs:
+            run.font.name = style.get('font_name', '黑体')
+            run.font.size = Pt(style.get('font_size', 10))
+            run.font.bold = style.get('bold', True)
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), style.get('font_name', '黑体'))
+
         heading.paragraph_format.first_line_indent = Cm(0)
         heading.paragraph_format.space_before = Cm(0)
         heading.paragraph_format.space_after = Cm(0)
@@ -2162,7 +2232,8 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
             try:
                 with open(chapters_path, 'r', encoding='utf-8') as f:
                     user_chapters = json.load(f)
-                print(f'[INFO] 已加载用户目录配置：{len(user_chapters)} 个一级章节')
+                print(f'\n[INFO] 已加载用户目录配置：{len(user_chapters)} 个一级章节')
+                print_chapter_tree(user_chapters, 0)
             except Exception as e:
                 print(f'[ERROR] 加载目录配置失败：{e}')
         
@@ -2267,9 +2338,12 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
         def render_chapter_with_status(node, level=1):
             """递归渲染章节，同时更新章节状态"""
             node_title = node.get('title', '')
+            node_level = node.get('level', level)  # 获取节点实际的 level
             children = node.get('children', [])
             # 使用节点自身的 index，而不是递增的 chapter_index
             node_index = node.get('index', 0)
+
+            print(f'\n[RENDER] 渲染章节 - 传入 level={level}, 节点 level={node_level}, 标题={node_title}')
 
             # 每次递归前检查任务是否被取消或暂停
             task_info = task_manager.load_task_info(task_id)
@@ -2292,16 +2366,20 @@ def process_document_async_v2(task_id, template_type, requirement_content, templ
 
             if children:
                 # 有子节点，先添加当前章节标题
-                add_heading(doc, node_title, level=level, styles=styles)
+                print(f'[RENDER] 有子节点，添加标题 - 使用 level={node_level}, 标题={node_title}')
+                add_heading(doc, node_title, level=node_level, styles=styles)
                 # 递归处理子节点
                 for child in children:
                     # 每次递归前检查取消状态
                     task_info = task_manager.load_task_info(task_id)
                     if task_info and task_info.status == 'cancelled':
                         return
-                    render_chapter_with_status(child, level + 1)
+                    child_level = child.get('level', node_level + 1)
+                    print(f'[RENDER] 递归处理子节点 - 传入 level={node_level + 1}, 子节点 level={child_level}')
+                    render_chapter_with_status(child, node_level + 1)
             else:
                 # 叶子节点，检查是否已完成（避免覆盖用户编辑）
+                print(f'[RENDER] 叶子节点 - 使用 level={node_level}, 标题={node_title}')
                 chapters = task_manager.load_chapters(task_id)
                 if node_index < len(chapters):
                     existing_chapter = chapters[node_index]
@@ -3418,23 +3496,26 @@ def save_chapters():
     try:
         data = request.json
         chapters = data.get('chapters', [])
-        
+
+        print(f'\n[SAVE] 保存章节配置，共 {len(chapters)} 个一级章节')
+        print_chapter_tree(chapters, 0)
+
         if not chapters:
             return jsonify({
                 'success': False,
                 'message': '章节目录不能为空'
             }), 400
-        
+
         # 将章节目录保存到文件
         chapters_path = os.path.join(app.config['UPLOAD_FOLDER'], 'chapter_config.json')
         with open(chapters_path, 'w', encoding='utf-8') as f:
             json.dump(chapters, f, ensure_ascii=False, indent=2)
-        
+
         return jsonify({
             'success': True,
             'message': '章节目录配置已保存'
         })
-        
+
     except Exception as e:
         return jsonify({
             'success': False,
@@ -3447,22 +3528,25 @@ def load_chapters():
     """加载已保存的章节目录配置"""
     try:
         chapters_path = os.path.join(app.config['UPLOAD_FOLDER'], 'chapter_config.json')
-        
+
         if os.path.exists(chapters_path):
             with open(chapters_path, 'r', encoding='utf-8') as f:
                 chapters = json.load(f)
+            print(f'\n[LOAD] 加载章节配置，共 {len(chapters)} 个一级章节')
+            print_chapter_tree(chapters, 0)
             return jsonify({
                 'success': True,
                 'chapters': chapters,
                 'message': '已加载保存的章节目录配置'
             })
         else:
+            print(f'\n[LOAD] 未找到章节配置文件')
             return jsonify({
                 'success': True,
                 'chapters': [],
                 'message': '未找到保存的章节目录配置'
             })
-            
+
     except Exception as e:
         return jsonify({
             'success': False,

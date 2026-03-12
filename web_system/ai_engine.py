@@ -1209,9 +1209,26 @@ def clean_ai_content(content: str, section_title: str) -> str:
         if not stripped:
             continue
 
-        # 跳过当前章节标题行
-        if stripped.startswith(section_title):
+        # 跳过当前章节标题行（修复：只跳过纯粹的标题行，不过滤以标题开头的正文）
+        # 情况 1: 完全匹配章节标题（如 "建议"）
+        if stripped == section_title:
+            print(f'[INFO] 跳过纯标题行：{stripped}')
             continue
+        # 情况 2: Markdown 标题格式（如 "## 建议"、"# 建议"）
+        if stripped.startswith('#') and (stripped.lstrip('#').strip() == section_title or stripped.lstrip('#').strip().startswith(section_title + ' ')):
+            print(f'[INFO] 跳过 Markdown 标题行：{stripped}')
+            continue
+        # 情况 3: 带括号的标题格式（如 "【建议】"、"【第 X 章 建议】"）
+        if (stripped.startswith('【') and stripped.endswith('】')) and section_title in stripped:
+            print(f'[INFO] 跳过括号标题行：{stripped}')
+            continue
+        # 情况 4: 数字编号 + 章节标题（如 "15.4 建议"）
+        if re.match(r'^\d+[\.\s]+[\u4e00-\u9fa5]+$', stripped):
+            parts = re.split(r'[\.\s]+', stripped, maxsplit=1)
+            if len(parts) == 2 and parts[1] == section_title:
+                print(f'[INFO] 跳过编号标题行：{stripped}')
+                continue
+        
         if stripped.startswith('#'):
             continue
 
@@ -1440,15 +1457,38 @@ def create_partial_document(task_id, chapters, template_type='future_community')
                 run.font.size = Pt(22 if level == 1 else 16)
                 run.font.bold = True
                 run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体' if level == 1 else '楷体')
+        elif level == 4:
+            # 4 级使用 Heading 4 样式，这样 Word 目录可以收集
+            heading = doc.add_heading(heading_text, level=4)
+            for run in heading.runs:
+                run.font.name = '黑体'
+                run.font.size = Pt(12)
+                run.font.bold = True
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
+        elif level == 5:
+            # 5 级使用 Heading 5 样式
+            heading = doc.add_heading(heading_text, level=5)
+            for run in heading.runs:
+                run.font.name = '黑体'
+                run.font.size = Pt(11)
+                run.font.bold = True
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
+        elif level == 6:
+            # 6 级使用 Heading 6 样式
+            heading = doc.add_heading(heading_text, level=6)
+            for run in heading.runs:
+                run.font.name = '黑体'
+                run.font.size = Pt(10)
+                run.font.bold = True
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
         else:
-            # 4级及以上使用普通段落
-            heading = doc.add_paragraph()
-            run = heading.add_run(heading_text)
-            run.font.name = '楷体'
-            run.font.size = Pt(14)
-            run.font.bold = True
-            run._element.rPr.rFonts.set(qn('w:eastAsia'), '楷体')
-            heading.paragraph_format.first_line_indent = Cm(0.74)
+            # 更高级别使用 Heading 6 样式
+            heading = doc.add_heading(heading_text, level=6)
+            for run in heading.runs:
+                run.font.name = '黑体'
+                run.font.size = Pt(10)
+                run.font.bold = True
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), '黑体')
         
         # 添加内容（如果有）
         if content:
