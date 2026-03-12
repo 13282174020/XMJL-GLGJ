@@ -405,3 +405,188 @@ if __name__ == '__main__':
 with open('tests/test_template_preprocessor.py', 'w', encoding='utf-8') as f:
     f.write(preprocessor_test_content)
 print('OK: tests/test_template_preprocessor.py')
+
+# 创建模板库管理模块
+library_content = '''# -*- coding: utf-8 -*-
+"""模板库管理模块"""
+import json
+import shutil
+from pathlib import Path
+from datetime import datetime
+from typing import List, Optional, Dict
+from dataclasses import dataclass, asdict
+
+
+@dataclass
+class TemplateInfo:
+    """模板信息"""
+    id: str
+    name: str
+    type: str
+    file_path: str
+    chapter_structure: Dict
+    style_config: Dict
+    created_at: str
+    is_default: bool = False
+    
+    def to_dict(self):
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data):
+        return cls(**data)
+
+
+class TemplateLibrary:
+    """模板库管理器"""
+    
+    def __init__(self, base_dir: str = 'templates'):
+        self.base_dir = Path(base_dir)
+        self.base_dir.mkdir(exist_ok=True)
+        self.metadata_file = self.base_dir / 'metadata.json'
+        self.templates = self._load_metadata()
+    
+    def _load_metadata(self) -> Dict[str, TemplateInfo]:
+        if self.metadata_file.exists():
+            with open(self.metadata_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return {k: TemplateInfo.from_dict(v) for k, v in data.items()}
+        return {}
+    
+    def _save_metadata(self):
+        with open(self.metadata_file, 'w', encoding='utf-8') as f:
+            json.dump({k: v.to_dict() for k, v in self.templates.items()}, 
+                     f, ensure_ascii=False, indent=2)
+    
+    def add_template(self, 
+                     name: str,
+                     file_path: str,
+                     template_type: str,
+                     chapter_structure: Dict,
+                     style_config: Dict,
+                     is_default: bool = False) -> TemplateInfo:
+        import uuid
+        template_id = f'template_{uuid.uuid4().hex[:8]}'
+        
+        # 复制文件到模板库
+        dest_path = self.base_dir / f'{template_id}.docx'
+        shutil.copy2(file_path, dest_path)
+        
+        info = TemplateInfo(
+            id=template_id,
+            name=name,
+            type=template_type,
+            file_path=str(dest_path),
+            chapter_structure=chapter_structure,
+            style_config=style_config,
+            created_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            is_default=is_default
+        )
+        
+        self.templates[template_id] = info
+        self._save_metadata()
+        return info
+    
+    def get_all_templates(self) -> List[TemplateInfo]:
+        return list(self.templates.values())
+    
+    def get_template(self, template_id: str) -> Optional[TemplateInfo]:
+        return self.templates.get(template_id)
+    
+    def delete_template(self, template_id: str) -> bool:
+        if template_id in self.templates:
+            template = self.templates[template_id]
+            file_path = Path(template.file_path)
+            if file_path.exists():
+                file_path.unlink()
+            del self.templates[template_id]
+            self._save_metadata()
+            return True
+        return False
+    
+    def download_template(self, template_id: str, output_path: str) -> bool:
+        template = self.get_template(template_id)
+        if not template:
+            return False
+        file_path = Path(template.file_path)
+        if not file_path.exists():
+            return False
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(file_path, output_path)
+        return True
+'''
+
+with open('web_system/template_library.py', 'w', encoding='utf-8') as f:
+    f.write(library_content)
+print('OK: web_system/template_library.py')
+
+# 创建模板库测试文件
+library_test_content = '''# -*- coding: utf-8 -*-
+"""模板库管理测试"""
+import pytest
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / 'web_system'))
+
+from template_library import TemplateLibrary, TemplateInfo
+
+
+class TestTemplateLibrary:
+    @pytest.fixture
+    def library(self, tmp_path):
+        lib = TemplateLibrary(str(tmp_path / 'templates'))
+        return lib
+    
+    def test_add_template(self, library, sample_standard_doc):
+        info = library.add_template(
+            name='测试模板',
+            file_path=str(sample_standard_doc),
+            template_type='test',
+            chapter_structure={'chapters': []},
+            style_config={}
+        )
+        
+        assert info.id.startswith('template_')
+        assert info.name == '测试模板'
+        assert Path(info.file_path).exists()
+        print(f"添加模板：{info.name}, ID: {info.id}")
+    
+    def test_get_all_templates(self, library, sample_standard_doc):
+        library.add_template('模板 1', str(sample_standard_doc), 'test', {}, {})
+        library.add_template('模板 2', str(sample_standard_doc), 'test', {}, {})
+        
+        templates = library.get_all_templates()
+        assert len(templates) == 2
+        print(f"模板库中有 {len(templates)} 个模板")
+    
+    def test_get_template(self, library, sample_standard_doc):
+        info = library.add_template('测试', str(sample_standard_doc), 'test', {}, {})
+        
+        retrieved = library.get_template(info.id)
+        assert retrieved is not None
+        assert retrieved.name == '测试'
+    
+    def test_delete_template(self, library, sample_standard_doc):
+        info = library.add_template('测试', str(sample_standard_doc), 'test', {}, {})
+        
+        assert library.delete_template(info.id) is True
+        assert library.get_template(info.id) is None
+    
+    def test_download_template(self, library, sample_standard_doc, tmp_path):
+        info = library.add_template('测试', str(sample_standard_doc), 'test', {}, {})
+        
+        output_path = tmp_path / 'downloaded.docx'
+        assert library.download_template(info.id, str(output_path)) is True
+        assert output_path.exists()
+        print(f"下载模板到：{output_path}")
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])
+'''
+
+with open('tests/test_template_library.py', 'w', encoding='utf-8') as f:
+    f.write(library_test_content)
+print('OK: tests/test_template_library.py')
