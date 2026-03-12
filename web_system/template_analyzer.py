@@ -83,11 +83,13 @@ class AnalysisReport:
 
 class DocumentAnalyzer:
     def __init__(self):
+        # 编号格式正则表达式（按级别从高到低排序）
+        # 修复：更精确的编号匹配，排除日期等
         self.numbering_regex_patterns = [
-            (r'^(\d+)\.(\d+)\.(\d+)\.(\d+)', 4),
-            (r'^(\d+)\.(\d+)\.(\d+)', 3),
-            (r'^(\d+)\.(\d+)', 2),
-            (r'^(\d+)', 1),
+            (r'^(\d+)\.(\d+)\.(\d+)\.(\d+)', 4),  # 4 级编号 X.X.X.X
+            (r'^(\d+)\.(\d+)\.(\d+)', 3),          # 3 级编号 X.X.X
+            (r'^(\d+)\.(\d+)', 2),                 # 2 级编号 X.X
+            # 移除单独的 ^(\d+) 模式，因为它会匹配日期如"2024 年"
         ]
     
     def analyze(self, file_path: str) -> AnalysisReport:
