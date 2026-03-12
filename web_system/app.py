@@ -37,6 +37,9 @@ from model_config import get_model_config_manager, ModelConfig, get_enabled_mode
 from task_manager import get_task_manager, TaskInfo, ChapterStatus, MAX_REGENERATE_COUNT
 from ai_engine import get_chapter_content_template
 
+# 导入模板管理 API 路由
+from template_api import register_template_routes
+
 app = Flask(__name__)
 CORS(app)
 
@@ -47,6 +50,15 @@ app.config['SECRET_KEY'] = os.urandom(24).hex()
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
+
+# 注册模板管理 API 蓝图
+register_template_routes(app)
+
+# 添加模板管理前端页面路由
+@app.route('/template-manager')
+def template_manager_page():
+    """模板管理前端页面"""
+    return render_template('template_manager.html')
 
 ALLOWED_EXTENSIONS = {'docx', 'doc', 'txt', 'pdf'}
 
