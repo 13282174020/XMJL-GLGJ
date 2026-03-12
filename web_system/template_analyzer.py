@@ -55,7 +55,9 @@ class AnalysisReport:
         }
     
     def generate_mapping_rules(self) -> List[dict]:
+        """生成样式映射规则"""
         rules = []
+        # 规则 1: 标准标题样式保持不变
         for style_name, analysis in self.heading_styles.items():
             if analysis.is_heading and analysis.heading_level > 0:
                 rules.append({
@@ -64,11 +66,11 @@ class AnalysisReport:
                     'target_style': f'Heading {analysis.heading_level}',
                     'rule_type': 'heading'
                 })
+        # 规则 2: 潜在标题样式根据编号格式映射
         for style_name in self.potential_heading_styles:
-            if style_name in self.heading_styles:
-                continue
             analysis = self.heading_styles.get(style_name)
-            if analysis and analysis.numbering_patterns:
+            # 检查是否有编号模式（不是标准标题但有编号格式）
+            if analysis and not analysis.is_heading and analysis.numbering_patterns:
                 for pattern_str, pattern_info in analysis.numbering_patterns.items():
                     rules.append({
                         'source_style': style_name,
