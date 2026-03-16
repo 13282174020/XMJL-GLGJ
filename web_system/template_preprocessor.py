@@ -6,7 +6,7 @@ import tempfile
 import os
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from docx import Document
 from docx.oxml.ns import qn
 from docx.shared import Pt, Cm
@@ -22,6 +22,68 @@ class PreprocessResult:
     def to_dict(self):
         return {'success': self.success, 'output_path': self.output_path,
                 'message': self.message, 'stats': self.stats}
+
+
+def remove_numbering_prefix(text: str) -> Tuple[str, str]:
+    """
+    删除文本开头的编号前缀
+    
+    Args:
+        text: 原始文本
+        
+    Returns:
+        (编号，纯文本) 元组
+    """
+    original_text = text
+    
+    # 定义编号前缀的正则表达式（按优先级排序）
+    patterns = [
+        # 数字编号：X.X.X.X 到 X.X（多级编号）
+        (r'^(\d+\.\d+\.\d+\.\d+\.\d+\.\d+)\s*', '6 级数字'),
+        (r'^(\d+\.\d+\.\d+\.\d+\.\d+)\s*', '5 级数字'),
+        (r'^(\d+\.\d+\.\d+\.\d+)\s*', '4 级数字'),
+        (r'^(\d+\.\d+\.\d+)\s*', '3 级数字'),
+        (r'^(\d+\.\d+)\s*', '2 级数字'),
+        
+        # 中文章节：第 X 章、第 X 节（优先于单数字）
+        (r'^(第 [一二三四五六七八九十百千\d]+[章条节款])\s*', '中文章节'),
+        
+        # 单数字编号：X. 后必须有空格，避免匹配 4.0 版本
+        (r'^(\d+\.)\s+', '1 级数字'),
+        
+        # 中文数字：一、二、
+        (r'^([一二三四五六七八九十]+[、.])\s*', '中文数字'),
+        
+        # 括号编号：（一）、(1) - 返回完整括号
+        (r'^（[一二三四五六七八九十\d]+）\s*', '中文括号'),
+        (r'^\(\d+\)\s*', '英文括号数字'),
+        (r'^\([一二三四五六七八九十]+\)\s*', '英文括号中文'),
+        
+        # 圆圈数字：① ②
+        (r'^(①|②|③|④|⑤|⑥|⑦|⑧|⑨|⑩)\s*', '圆圈数字'),
+    ]
+    
+    for pattern, pattern_type in patterns:
+        match = re.match(pattern, text)
+        if match:
+            numbering = match.group(1) if match.lastindex else match.group(0)
+            pure_text = text[match.end():].strip()
+            
+            # 特殊处理：如果删除编号后文本太短（< 2 字），可能编号是文本的一部分
+            if len(pure_text) < 2:
+                continue
+            
+            # 特殊处理：避免删除版本号如 4.0
+            if pattern_type == '1 级数字':
+                # 检查原始文本是否是版本号格式（数字。数字，后面没有空格）
+                # 如 "4.0 版本" 不删除，"4. 管理后台" 删除
+                if re.match(r'^\d+\.\d', text.split()[0] if text.split() else text):
+                    continue
+            
+            return numbering, pure_text
+    
+    # 没有匹配到编号
+    return '', original_text
 
 
 class TemplatePreprocessor:
@@ -96,10 +158,11 @@ class TemplatePreprocessor:
         return doc
 
     def _apply_style_conversions(self, doc: Document, rules: List[dict]) -> Dict[str, int]:
-        """应用样式转换 - 保留正文内容"""
+        """应用样式转换 - 保留正文内容，删除编号前缀"""
         import logging
         
         stats = {}
+        removed_numbering_count = 0
         
         # 编译正则表达式规则
         compiled_rules = []
@@ -130,13 +193,24 @@ class TemplatePreprocessor:
                     # 如果样式不存在，尝试设置基本格式
                     self._apply_basic_heading_style(para, new_style)
                 
+                # 删除编号前缀（仅对 Heading 样式）
+                if 'Heading' in new_style:
+                    numbering, pure_text = remove_numbering_prefix(text)
+                    if numbering:
+                        # 更新段落文本
+                        para.clear()
+                        run = para.add_run(pure_text)
+                        removed_numbering_count += 1
+                        logging.debug(f'[PREPROCESS] 删除编号：{numbering} | {pure_text[:30]}')
+                
                 key = f'{current_style}->{new_style}'
                 stats[key] = stats.get(key, 0) + 1
                 logging.debug(f'[PREPROCESS] 段落 {i}: {current_style} -> {new_style} | {text[:30]}')
             else:
                 stats['unchanged'] = stats.get('unchanged', 0) + 1
         
-        logging.info(f'[PREPROCESS] 转换完成：{sum(v for k, v in stats.items() if k != "unchanged")} 个段落已转换，{stats.get("unchanged", 0)} 个段落保持不变')
+        stats['removed_numbering'] = removed_numbering_count
+        logging.info(f'[PREPROCESS] 转换完成：{sum(v for k, v in stats.items() if k not in ["unchanged", "removed_numbering"])} 个段落已转换，{removed_numbering_count} 个编号前缀已删除')
         return stats
 
     def _find_matching_style(self, style_name: str, text: str, rules: List[dict]) -> Optional[str]:
