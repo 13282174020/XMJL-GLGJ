@@ -138,24 +138,53 @@ class TemplatePreprocessor:
             return PreprocessResult(False, None, f'处理失败：{e}', {})
 
     def _copy_template(self, template_path: str) -> Document:
-        """复制模板文档"""
+        """复制模板文档并确保 Heading 样式有正确的大纲级别"""
         import logging
-        
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+
         # 创建临时文件复制模板
         temp_dir = tempfile.mkdtemp()
         temp_template = os.path.join(temp_dir, 'template.docx')
         shutil.copy2(template_path, temp_template)
-        
+
         # 加载模板文档
         doc = Document(temp_template)
-        
+
         logging.info(f'[PREPROCESS] 模板文档：{len(doc.paragraphs)} 个段落，{len(doc.tables)} 个表格')
-        
+
+        # 确保 Heading 样式有正确的大纲级别（用于多级列表）
+        self._ensure_heading_outline_levels(doc)
+
         # 清理临时文件
         os.remove(temp_template)
         os.rmdir(temp_dir)
-        
+
         return doc
+
+    def _ensure_heading_outline_levels(self, doc: Document) -> None:
+        """确保 Heading 1-9 样式有正确的大纲级别（用于多级列表）"""
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+        import logging
+        
+        logging.info('[PREPROCESS] 设置 Heading 样式的大纲级别...')
+        
+        for i in range(1, 10):
+            style_name = f'Heading {i}'
+            try:
+                style = doc.styles[style_name]
+                pPr = style._element.pPr
+                if pPr is not None:
+                    # 设置 outlineLvl
+                    outlineLvl = pPr.outlineLvl
+                    if outlineLvl is None:
+                        outlineLvl = OxmlElement('w:outlineLvl')
+                        pPr.insert(0, outlineLvl)
+                    outlineLvl.set(qn('w:val'), str(i - 1))
+                    logging.info(f'[PREPROCESS]   {style_name}: outlineLvl={i-1}')
+            except Exception as e:
+                logging.debug(f'[PREPROCESS]   {style_name}: 设置失败 - {e}')
 
     def _apply_style_conversions(self, doc: Document, rules: List[dict]) -> Dict[str, int]:
         """应用样式转换 - 保留正文内容，删除编号前缀"""

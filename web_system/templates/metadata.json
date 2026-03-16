@@ -38,5 +38,25 @@
     "style_config": {},
     "created_at": "2026-03-16 22:24:29",
     "is_default": false
+  },
+  "template_eec58789": {
+    "id": "template_eec58789",
+    "name": "新模板5",
+    "type": "custom",
+    "file_path": "templates\\template_eec58789.docx",
+    "chapter_structure": {},
+    "style_config": {},
+    "created_at": "2026-03-16 22:59:21",
+    "is_default": false
+  },
+  "template_cd69b18f": {
+    "id": "template_cd69b18f",
+    "name": "新模板_1773673282609",
+    "type": "custom",
+    "file_path": "templates\\template_cd69b18f.docx",
+    "chapter_structure": {},
+    "style_config": {},
+    "created_at": "2026-03-16 23:01:23",
+    "is_default": false
   }
 }

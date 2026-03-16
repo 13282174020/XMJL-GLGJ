@@ -1,23 +1,28 @@
 # -*- coding: utf-8 -*-
-"""检查章标题使用的样式"""
+"""检查生成文档的样式名称"""
 from docx import Document
 
-output_path = r'e:\Qwen\xmjl\outputs\test_with_logs.docx'
-doc = Document(output_path)
+doc = Document(r'e:\Qwen\xmjl\web_system\outputs\test_cscswj2_processed.docx')
 
-print('检查前 15 个非空段落的样式:')
-count = 0
+print('检查 Heading 样式的段落:')
+print('=' * 80)
+
+heading_styles = {}
 for i, para in enumerate(doc.paragraphs):
     text = para.text.strip()
     if not text:
         continue
-    style_name = para.style.name if para.style else 'Normal'
-    print(f'  段落 {i}: [{style_name}] {text[:50]}')
-    count += 1
-    if count >= 15:
-        break
+    style = para.style.name if para.style else 'Normal'
+    
+    if 'Heading' in style:
+        if style not in heading_styles:
+            heading_styles[style] = 0
+        heading_styles[style] += 1
+        
+        # 打印前 20 个
+        if heading_styles[style] <= 5:
+            print(f'[{style}] {text[:60]}')
 
-# 检查文档中可用的样式
-print(f'\n文档中可用的样式:')
-for style in doc.styles:
-    print(f'  {style.name}')
+print(f'\n样式统计:')
+for style, count in sorted(heading_styles.items()):
+    print(f'  {style}: {count}')
