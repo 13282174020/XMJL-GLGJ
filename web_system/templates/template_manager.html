@@ -164,7 +164,30 @@
         
         async function handleFileSelect(e){
             const file=e.target.files[0];if(!file)return;
-            if(!file.name.endsWith('.docx')){showAlert('请上传 .docx 格式文件','error');return}
+            
+            // 检查文件扩展名
+            if(!file.name.toLowerCase().endsWith('.docx')){
+                showAlert('请上传 .docx 格式的文件（Office 2007+）','error');
+                return;
+            }
+            
+            // 检查文件大小（至少 1KB）
+            if(file.size < 1024){
+                showAlert('文件太小，可能已损坏','error');
+                return;
+            }
+            
+            // 读取文件头检查是否为 ZIP 格式（docx 本质是 ZIP）
+            const arrayBuffer = await file.slice(0, 4).arrayBuffer();
+            const bytes = new Uint8Array(arrayBuffer);
+            const header = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+            
+            // ZIP 文件头应该是 504B0304
+            if(header !== '504b0304'){
+                showAlert('文件格式不正确：这不是有效的 .docx 文件（可能是旧版 .doc 格式）','error');
+                return;
+            }
+            
             const formData=new FormData();formData.append('file',file);
             try{
                 const resp=await fetch(`${API_BASE}/upload`,{method:'POST',body:formData});
@@ -178,13 +201,61 @@
         
         function renderAnalysis(data){
             const a=data.analysis;
-            document.getElementById('analysisContent').innerHTML=`
-                <p><strong>文件：</strong>${escapeHtml(a.file_path)}</p>
-                <p><strong>段落数：</strong>${a.total_paragraphs}</p>
-                <p><strong>样式数：</strong>${Object.keys(a.styles_usage).length}</p>
-                <p><strong>规则数：</strong>${data.rules.length}</p>
-                ${data.rules.length>0?'<h5 style="margin-top:10px">规则：</h5><ul style="font-size:13px;margin-top:5px">'+data.rules.map(r=>`<li>${escapeHtml(r.source_style)}→${escapeHtml(r.target_style)}</li>`).join('')+'</ul>':''}
-            `
+            const headingStyles = Object.entries(a.heading_styles || {});
+            const potentialStyles = a.potential_heading_styles || [];
+            
+            let html = `
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px">
+                    <div style="background:#f8f9fa;padding:15px;border-radius:8px">
+                        <p style="margin:0;font-size:13px;color:#666">📄 文件</p>
+                        <p style="margin:5px 0 0 0;font-weight:600">${escapeHtml(a.file_path.split('/').pop())}</p>
+                    </div>
+                    <div style="background:#f8f9fa;padding:15px;border-radius:8px">
+                        <p style="margin:0;font-size:13px;color:#666">📊 段落数</p>
+                        <p style="margin:5px 0 0 0;font-weight:600">${a.total_paragraphs}</p>
+                    </div>
+                    <div style="background:#f8f9fa;padding:15px;border-radius:8px">
+                        <p style="margin:0;font-size:13px;color:#666">🎨 样式数</p>
+                        <p style="margin:5px 0 0 0;font-weight:600">${Object.keys(a.styles_usage).length}</p>
+                    </div>
+                    <div style="background:#f8f9fa;padding:15px;border-radius:8px">
+                        <p style="margin:0;font-size:13px;color:#666">📝 规则数</p>
+                        <p style="margin:5px 0 0 0;font-weight:600">${data.rules.length}</p>
+                    </div>
+                </div>
+                
+                <h5 style="margin-top:15px;margin-bottom:10px">📋 样式映射规则：</h5>
+                <div style="max-height:300px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:8px">
+                    ${data.rules.length > 0 ? `
+                        <table style="width:100%;border-collapse:collapse;font-size:13px">
+                            <thead style="position:sticky;top:0;background:#1e3c72;color:white">
+                                <tr>
+                                    <th style="padding:10px;text-align:left">源样式</th>
+                                    <th style="padding:10px">编号模式</th>
+                                    <th style="padding:10px">目标样式</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.rules.map((r,i) => `
+                                    <tr style="${i%2===0?'background:#fff':'background:#f8f9fa'}">
+                                        <td style="padding:8px;border-bottom:1px solid #e0e0e0">${escapeHtml(r.source_style)}</td>
+                                        <td style="padding:8px;border-bottom:1px solid #e0e0e0;text-align:center;font-family:monospace;font-size:12px">${r.pattern ? escapeHtml(r.pattern) : '-'}</td>
+                                        <td style="padding:8px;border-bottom:1px solid #e0e0e0;text-align:center;color:#1e3c72;font-weight:600">${escapeHtml(r.target_style)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    ` : '<p style="padding:20px;text-align:center;color:#999">暂无映射规则</p>'}
+                </div>
+                
+                ${potentialStyles.length > 0 ? `
+                    <h5 style="margin-top:15px;margin-bottom:10px">🔍 潜在标题样式：</h5>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px">
+                        ${potentialStyles.map(s => `<span style="background:#e3f2fd;color:#1e3c72;padding:4px 10px;border-radius:4px;font-size:12px">${escapeHtml(s)}</span>`).join('')}
+                    </div>
+                ` : ''}
+            `;
+            document.getElementById('analysisContent').innerHTML = html;
         }
         
         async function preprocessTemplate(){

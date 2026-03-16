@@ -1,0 +1,21 @@
+{
+  "task_id": "fea23fc7edeb4b53b4dc592ad5bcab14",
+  "template_type": "future_community",
+  "user_prompt": "围绕未来社区进行内容生成",
+  "model": "ollama-qwen3-14b-instruct",
+  "status": "completed",
+  "progress": 100,
+  "message": "文档生成成功",
+  "current_chapter_index": null,
+  "total_chapters": 69,
+  "completed_chapters": 60,
+  "failed_chapters": [],
+  "created_at": "2026-03-16 15:43:26",
+  "updated_at": "2026-03-16 15:56:38",
+  "started_at": "2026-03-16 15:43:26",
+  "completed_at": "2026-03-16 15:56:38",
+  "requirement_filename": "docx.docx",
+  "template_filename": "2_1773646675212.docx",
+  "output_filename": "future_community_可行性研究报告_fea23fc7.docx",
+  "partial_filename": null
+}

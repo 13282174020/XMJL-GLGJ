@@ -114,16 +114,17 @@ class DocBuilder:
     
     def _load_template_styles(self, template_path: str) -> None:
         """从模板文档加载样式定义
-        
+
         Args:
             template_path: 模板文件路径
         """
         try:
             template_doc = Document(template_path)
-            
+
             # 提取所有样式的定义
-            for style_name in template_doc.styles:
-                style = template_doc.styles[style_name]
+            # 注意：template_doc.styles 返回的是样式对象列表
+            for style in template_doc.styles:
+                style_name = style.name
                 style_info = {
                     'name': style_name,
                     'font_name': None,
@@ -136,7 +137,7 @@ class DocBuilder:
                     'line_spacing': 1.0,
                     'first_indent': 0
                 }
-                
+
                 # 提取字体信息
                 if hasattr(style, 'font') and style.font:
                     font = style.font
@@ -146,7 +147,7 @@ class DocBuilder:
                         style_info['font_size'] = font.size.pt
                     style_info['bold'] = font.bold if font.bold is not None else False
                     style_info['italic'] = font.italic if font.italic is not None else False
-                
+
                 # 提取段落格式
                 if hasattr(style, 'paragraph_format') and style.paragraph_format:
                     pf = style.paragraph_format
@@ -160,14 +161,16 @@ class DocBuilder:
                         style_info['line_spacing'] = pf.line_spacing
                     if hasattr(pf, 'first_line_indent') and pf.first_line_indent:
                         style_info['first_indent'] = pf.first_line_indent.cm if pf.first_line_indent else 0
-                
+
                 self.template_styles[style_name] = style_info
-            
+
             # 映射模板样式到内部样式
             self._map_template_styles()
-            
+
         except Exception as e:
             print(f"警告：无法加载模板样式：{str(e)}")
+            import traceback
+            traceback.print_exc()
     
     def _map_template_styles(self) -> None:
         """将模板样式映射到内部样式配置"""
@@ -320,19 +323,43 @@ class DocBuilder:
         
         self.add_page_break()
     
-    def _add_heading_style(self, text: str, level: int = 1) -> None:
+    def _add_heading_style(self, text: str, level: int = 1, style_name: str = None) -> None:
         """添加标题，使用模板样式
-        
+
         Args:
             text: 标题文本
             level: 标题层级 (1-4)
+            style_name: 原始样式名（可选，用于保留模板中的样式）
         """
+        import logging
+        
+        # 如果有原始样式名，尝试使用模板样式
+        if style_name and style_name in self.template_styles:
+            logging.info(f'[DOC_BUILD]           模板样式 "{style_name}" 存在，使用模板样式')
+            self._add_heading_with_template_style(text, style_name)
+            return
+        
+        # 样式名不在 template_styles 中，检查是否是标准样式
+        if style_name:
+            logging.info(f'[DOC_BUILD]           模板样式 "{style_name}" 不存在（template_styles 有 {len(self.template_styles)} 个样式）')
+            logging.info(f'[DOC_BUILD]           尝试直接使用样式名创建段落')
+            # 尝试直接使用样式名创建段落
+            try:
+                para = self.doc.add_paragraph(style=style_name)
+                run = para.add_run(text)
+                logging.info(f'[DOC_BUILD]           成功使用样式 "{style_name}" 创建标题')
+                return
+            except KeyError:
+                logging.warning(f'[DOC_BUILD]           样式 "{style_name}" 在文档中不存在，使用默认样式')
+        
+        # 否则使用默认样式配置
+        logging.info(f'[DOC_BUILD]           使用默认 L{level} 样式配置')
         # 获取对应层级的样式配置
         style_config = self._get_style_for_level(level)
-        
+
         # 添加段落
         para = self.doc.add_paragraph()
-        
+
         # 设置对齐方式
         alignment = style_config.get('alignment', 'left')
         if alignment == 'center':
@@ -343,7 +370,7 @@ class DocBuilder:
             para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         else:
             para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        
+
         # 设置间距
         space_before = style_config.get('space_before_pt', 0)
         space_after = style_config.get('space_after_pt', 0)
@@ -351,10 +378,71 @@ class DocBuilder:
             para.paragraph_format.space_before = Cm(space_before / 72 * 2.54)
         if space_after:
             para.paragraph_format.space_after = Cm(space_after / 72 * 2.54)
-        
+
         # 添加文本
         run = para.add_run(text)
         self._apply_style(run, style_config)
+
+    def _add_heading_with_template_style(self, text: str, style_name: str) -> None:
+        """使用模板中的原始样式添加标题
+
+        Args:
+            text: 标题文本
+            style_name: 模板中的样式名
+        """
+        if style_name not in self.template_styles:
+            # 如果模板样式不存在，回退到默认方式
+            self._add_heading_style(text, level=1)
+            return
+
+        ts = self.template_styles[style_name]
+        
+        import logging
+        logging.info(f'[DOC_BUILD]           使用样式 "{style_name}" 创建标题')
+        
+        # 尝试直接使用样式名创建段落
+        # 注意：样式必须已经在文档中定义
+        try:
+            para = self.doc.add_paragraph(style=style_name)
+        except KeyError:
+            # 如果样式不存在，使用 Normal 样式
+            logging.warning(f'[DOC_BUILD]           样式 "{style_name}" 不存在，使用 Normal 样式')
+            para = self.doc.add_paragraph()
+        
+        # 设置对齐方式
+        alignment = self._convert_alignment(ts.get('alignment', 'left'))
+        if alignment == 'center':
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        elif alignment == 'right':
+            para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        elif alignment == 'justify':
+            para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        else:
+            para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        
+        # 设置间距
+        space_before = ts.get('space_before', 0)
+        space_after = ts.get('space_after', 0)
+        if space_before:
+            para.paragraph_format.space_before = Cm(space_before / 72 * 2.54)
+        if space_after:
+            para.paragraph_format.space_after = Cm(space_after / 72 * 2.54)
+        
+        # 首行缩进
+        first_indent = ts.get('first_indent', 0)
+        if first_indent:
+            para.paragraph_format.first_line_indent = Cm(first_indent)
+        
+        # 行距
+        line_spacing = ts.get('line_spacing', 1.0)
+        para.paragraph_format.line_spacing = line_spacing
+        
+        # 添加文本
+        run = para.add_run(text)
+        run.font.name = ts.get('font_name') or '宋体'
+        run.font.size = Pt(ts.get('font_size') or 10.5)
+        run.font.bold = ts.get('bold', False)
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), ts.get('font_name') or '宋体')
     
     def _get_style_for_level(self, level: int) -> Dict[str, Any]:
         """根据层级获取样式配置
@@ -373,21 +461,23 @@ class DocBuilder:
         }
         return styles.get(level, styles[4])
     
-    def add_chapter_title(self, title: str) -> None:
+    def add_chapter_title(self, title: str, style_name: str = None) -> None:
         """添加章标题
-        
+
         Args:
             title: 章标题
+            style_name: 原始样式名（可选，用于保留模板中的样式）
         """
-        self._add_heading_style(title, level=1)
+        self._add_heading_style(title, level=1, style_name=style_name)
     
-    def add_section_title(self, title: str) -> None:
+    def add_section_title(self, title: str, style_name: str = None) -> None:
         """添加节标题
-        
+
         Args:
             title: 节标题
+            style_name: 原始样式名（可选，用于保留模板中的样式）
         """
-        self._add_heading_style(title, level=2)
+        self._add_heading_style(title, level=2, style_name=style_name)
     
     def add_subsection_title(self, title: str) -> None:
         """添加小节标题
@@ -573,84 +663,194 @@ class DocBuilder:
         for chapter in json_data.get('generated_chapters', []):
             self.render_chapter(chapter)
     
-    def render_from_template_structure(self, template_structure: Dict[str, Any], 
+    def render_from_template_structure(self, template_structure: Dict[str, Any],
                                        chapter_contents: Dict[str, str]) -> None:
         """根据模板结构渲染文档
-        
+
         Args:
             template_structure: 模板结构树（来自 TemplateAnalyzer）
             chapter_contents: 各章节内容字典 {章节编号：内容文本}
         """
+        import logging
+        import shutil
+        import tempfile
+        
+        logging.info('=' * 80)
+        logging.info('[DOC_BUILD] 开始根据模板结构渲染文档')
+        logging.info(f'[DOC_BUILD] 模板路径：{self.template_path}')
+        logging.info(f'[DOC_BUILD] 章节数：{len(template_structure.get("chapter_tree", []))}')
+        logging.info(f'[DOC_BUILD] 内容章节数：{len(chapter_contents)}')
+        
+        # 如果有模板文件，复制模板文档并清除内容（保留样式）
+        if self.template_path and os.path.exists(self.template_path):
+            logging.info('[DOC_BUILD] 检测到模板文件，复制模板文档并清除内容...')
+            
+            # 创建临时文件复制模板
+            temp_dir = tempfile.mkdtemp()
+            temp_template = os.path.join(temp_dir, 'template.docx')
+            shutil.copy2(self.template_path, temp_template)
+            
+            # 加载模板文档
+            from docx import Document
+            template_doc = Document(temp_template)
+            
+            # 清除所有段落和表格（保留样式定义）
+            logging.info(f'[DOC_BUILD] 清除模板内容：{len(template_doc.paragraphs)} 个段落，{len(template_doc.tables)} 个表格')
+            
+            # 清除段落
+            for para in list(template_doc.paragraphs):
+                para._element.getparent().remove(para._element)
+            
+            # 清除表格
+            for table in list(template_doc.tables):
+                table._element.getparent().remove(table._element)
+            
+            # 使用清除后的文档
+            self.doc = template_doc
+            
+            # 清理临时文件
+            os.remove(temp_template)
+            os.rmdir(temp_dir)
+            
+            logging.info('[DOC_BUILD] 模板内容已清除，样式已保留')
+        else:
+            logging.info('[DOC_BUILD] 无模板文件，创建新文档')
+            from docx import Document
+            self.doc = Document()
+        
         # 添加封面
+        logging.info('[DOC_BUILD] 正在添加封面...')
         self.add_cover({'name': '建设项目', 'org_name': 'XX 单位'})
         
         # 添加目录
+        logging.info('[DOC_BUILD] 正在添加目录...')
         chapters = template_structure.get('chapter_tree', [])
         self.add_toc(chapters)
+        logging.info(f'[DOC_BUILD] 目录条目数：{len(chapters)}')
         
         # 按模板结构逐章渲染
-        for chapter in chapters:
+        logging.info('[DOC_BUILD] 开始渲染章节内容...')
+        for i, chapter in enumerate(chapters):
+            logging.info(f'[DOC_BUILD] 渲染第 {i+1}/{len(chapters)} 章：{chapter.get("title", "未知")}')
+            logging.info(f'[DOC_BUILD]   章节样式：{chapter.get("style", "未知")}')
+            logging.info(f'[DOC_BUILD]   子节点数：{len(chapter.get("children", []))}')
             self._render_template_chapter(chapter, chapter_contents)
+        
+        logging.info('[DOC_BUILD] 章节渲染完成')
+        logging.info('=' * 80)
+
+    def _update_template_headings(self, template_structure: Dict[str, Any],
+                                   chapter_contents: Dict[str, str]) -> None:
+        """更新模板文档中的标题文本
+        
+        Args:
+            template_structure: 模板结构树
+            chapter_contents: 章节内容字典
+        """
+        # 这个方法用于在模板文档基础上修改标题文本
+        # 目前保持简单实现，直接使用 render_from_template_structure 的逻辑
+        # 因为模板文档已经包含了所有样式和结构
+        
+        # 添加封面（如果需要）
+        # 注意：模板文档可能已经有封面，这里选择添加新的封面
+        # 可以在后续优化中判断是否已有封面
+        
+        # 实际上，如果模板文档已经包含完整的结构，我们只需要：
+        # 1. 保留模板文档的样式
+        # 2. 根据章节内容替换或添加内容段落
+        
+        # 简化处理：直接使用模板文档，不修改标题
+        # 因为模板文档的标题已经是正确的格式
+        pass
     
-    def _render_template_chapter(self, chapter: Dict[str, Any], 
+    def _render_template_chapter(self, chapter: Dict[str, Any],
                                   chapter_contents: Dict[str, str]) -> None:
         """渲染模板中的章节
-        
+
         Args:
             chapter: 章节数据（来自模板分析）
             chapter_contents: 章节内容字典
         """
-        # 添加章标题
-        self.add_chapter_title(chapter['title'])
+        import logging
+        logging.info(f'[DOC_BUILD]   添加章标题：{chapter.get("title", "未知")}')
+        logging.info(f'[DOC_BUILD]     章节样式：{chapter.get("style", "未知")}')
         
-        # 渲染小节
-        for section in chapter.get('subsections', []):
+        # 添加章标题（传递样式名）
+        style_name = chapter.get('style')
+        self.add_chapter_title(chapter['title'], style_name=style_name)
+
+        # 渲染子节点（修复：使用 'children' 而不是 'subsections'）
+        for i, section in enumerate(chapter.get('children', [])):
+            logging.info(f'[DOC_BUILD]     渲染小节 {i+1}/{len(chapter.get("children", []))}: {section.get("title", "未知")}')
+            logging.info(f'[DOC_BUILD]       小节样式：{section.get("style", "未知")}')
             self._render_template_section(section, chapter_contents)
-        
+
         self.add_page_break()
+        logging.info(f'[DOC_BUILD]   章节 {chapter.get("title", "未知")} 渲染完成，添加分页符')
     
-    def _render_template_section(self, section: Dict[str, Any], 
+    def _render_template_section(self, section: Dict[str, Any],
                                    chapter_contents: Dict[str, str]) -> None:
         """渲染模板中的小节
-        
+
         Args:
             section: 小节数据
             chapter_contents: 章节内容字典
         """
-        # 添加节标题
-        self.add_section_title(section['title'])
+        import logging
+        logging.info(f'[DOC_BUILD]       添加节标题：{section.get("title", "未知")}')
+        logging.info(f'[DOC_BUILD]         原始样式：{section.get("style", "未知")}')
         
+        # 添加节标题（使用原始样式名）
+        style_name = section.get('style')
+        self.add_section_title(section['title'], style_name=style_name)
+        logging.info(f'[DOC_BUILD]         标题已添加')
+
         # 获取内容（如果有）
         content = chapter_contents.get(section['title'], '')
         if content:
+            logging.info(f'[DOC_BUILD]         内容长度：{len(content)} 字符')
             # 将内容分割成段落
             paragraphs = content.split('\n')
             for para in paragraphs:
                 if para.strip():
                     self.add_body(para.strip())
-        
+            logging.info(f'[DOC_BUILD]         已添加 {len(paragraphs)} 个段落')
+        else:
+            logging.info(f'[DOC_BUILD]         无内容，跳过')
+
         # 渲染子节点（三级标题等）
-        for child in section.get('children', []):
+        for i, child in enumerate(section.get('children', [])):
+            logging.info(f'[DOC_BUILD]         渲染子节点 {i+1}/{len(section.get("children", []))}: {child.get("title", "未知")}')
             self._render_template_subsection(child, chapter_contents)
-    
-    def _render_template_subsection(self, subsection: Dict[str, Any], 
+
+    def _render_template_subsection(self, subsection: Dict[str, Any],
                                      chapter_contents: Dict[str, str]) -> None:
         """渲染模板中的小小节
-        
+
         Args:
             subsection: 小小节数据
             chapter_contents: 章节内容字典
         """
-        # 添加小小节标题
-        self._add_heading_style(subsection['title'], level=3)
+        import logging
+        logging.info(f'[DOC_BUILD]           添加小小节标题：{subsection.get("title", "未知")}')
+        logging.info(f'[DOC_BUILD]             原始样式：{subsection.get("style", "未知")}')
         
+        # 添加小小节标题（使用原始样式名）
+        style_name = subsection.get('style')
+        self._add_heading_style(subsection['title'], level=3, style_name=style_name)
+        logging.info(f'[DOC_BUILD]             标题已添加')
+
         # 获取内容
         content = chapter_contents.get(subsection['title'], '')
         if content:
+            logging.info(f'[DOC_BUILD]             内容长度：{len(content)} 字符')
             paragraphs = content.split('\n')
             for para in paragraphs:
                 if para.strip():
                     self.add_body(para.strip())
+            logging.info(f'[DOC_BUILD]             已添加 {len(paragraphs)} 个段落')
+        else:
+            logging.info(f'[DOC_BUILD]             无内容，跳过')
 
 
 def create_doc_builder(template_path: Optional[str] = None, style_config: Optional[Dict] = None) -> DocBuilder:

@@ -92,10 +92,17 @@ class TemplateAnalyzer:
         if not self.doc:
             return
 
+        import logging
+        logging.info('=' * 80)
+        logging.info('[ANALYZER] 开始提取章节结构')
+        logging.info(f'[ANALYZER] 文档总段落数：{len(self.doc.paragraphs)}')
+        
         self.chapter_tree = []
         heading_stack = []  # 用栈来管理层级关系
+        
+        heading_count = 0
 
-        for para in self.doc.paragraphs:
+        for i, para in enumerate(self.doc.paragraphs):
             text = para.text.strip()
             if not text:
                 continue
@@ -107,6 +114,9 @@ class TemplateAnalyzer:
 
             if level == 0:  # 正文，跳过
                 continue
+
+            heading_count += 1
+            logging.info(f'[ANALYZER] 段落 {i}: 发现标题 L{level} [{style_name}] {text[:50]}')
 
             # 创建当前节点
             node = {
@@ -124,12 +134,17 @@ class TemplateAnalyzer:
             if heading_stack:
                 # 添加到父节点的 children
                 heading_stack[-1]['children'].append(node)
+                logging.info(f'[ANALYZER]   -> 添加到父节点：{heading_stack[-1]["title"][:30]}')
             else:
                 # 没有父节点，作为根节点
                 self.chapter_tree.append(node)
+                logging.info(f'[ANALYZER]   -> 添加为根节点')
 
             # 当前节点入栈
             heading_stack.append(node)
+
+        logging.info(f'[ANALYZER] 提取完成，共找到 {heading_count} 个标题，{len(self.chapter_tree)} 个根节点')
+        logging.info('=' * 80)
 
     def _detect_heading_level(self, text: str, style_name: str) -> int:
         """检测标题层级
