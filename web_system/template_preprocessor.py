@@ -189,9 +189,11 @@ class TemplatePreprocessor:
     def _apply_style_conversions(self, doc: Document, rules: List[dict]) -> Dict[str, int]:
         """应用样式转换 - 保留正文内容，删除编号前缀"""
         import logging
+        from docx.oxml import OxmlElement
         
         stats = {}
         removed_numbering_count = 0
+        converted_count = 0
         
         # 编译正则表达式规则
         compiled_rules = []
@@ -205,7 +207,8 @@ class TemplatePreprocessor:
                     continue
             compiled_rules.append(compiled_rule)
         
-        # 逐段处理
+        # 收集需要转换的段落
+        conversions = []
         for i, para in enumerate(doc.paragraphs):
             text = para.text.strip()
             if not text:
@@ -215,31 +218,43 @@ class TemplatePreprocessor:
             new_style = self._find_matching_style(current_style, text, compiled_rules)
             
             if new_style and new_style != current_style:
-                # 应用新样式
-                try:
-                    para.style = new_style
-                except:
-                    # 如果样式不存在，尝试设置基本格式
-                    self._apply_basic_heading_style(para, new_style)
-                
-                # 删除编号前缀（仅对 Heading 样式）
-                if 'Heading' in new_style:
-                    numbering, pure_text = remove_numbering_prefix(text)
-                    if numbering:
-                        # 更新段落文本
-                        para.clear()
-                        run = para.add_run(pure_text)
-                        removed_numbering_count += 1
-                        logging.debug(f'[PREPROCESS] 删除编号：{numbering} | {pure_text[:30]}')
-                
-                key = f'{current_style}->{new_style}'
-                stats[key] = stats.get(key, 0) + 1
-                logging.debug(f'[PREPROCESS] 段落 {i}: {current_style} -> {new_style} | {text[:30]}')
-            else:
-                stats['unchanged'] = stats.get('unchanged', 0) + 1
+                conversions.append((para, current_style, new_style, text))
         
+        # 处理每个需要转换的段落
+        for para, current_style, new_style, text in conversions:
+            # 删除编号前缀（仅对 Heading 样式）
+            pure_text = text
+            if 'Heading' in new_style:
+                numbering, pure_text = remove_numbering_prefix(text)
+                if numbering:
+                    removed_numbering_count += 1
+                    logging.debug(f'[PREPROCESS] 删除编号：{numbering} | {pure_text[:30]}')
+            
+            # 创建新段落（使用正确的样式）
+            new_para = doc.add_paragraph(style=new_style)
+            new_run = new_para.add_run(pure_text)
+            
+            # 复制原段落的格式（间距等）
+            if para.paragraph_format.space_before:
+                new_para.paragraph_format.space_before = para.paragraph_format.space_before
+            if para.paragraph_format.space_after:
+                new_para.paragraph_format.space_after = para.paragraph_format.space_after
+            
+            # 将新段落移动到原段落之前（通过 XML 操作）
+            para._element.addprevious(new_para._element)
+            
+            # 从文档中删除原段落
+            para._element.getparent().remove(para._element)
+            
+            converted_count += 1
+            key = f'{current_style}->{new_style}'
+            stats[key] = stats.get(key, 0) + 1
+            logging.debug(f'[PREPROCESS] 转换：{current_style} -> {new_style} | {pure_text[:30]}')
+        
+        stats['unchanged'] = len(doc.paragraphs) - converted_count
         stats['removed_numbering'] = removed_numbering_count
-        logging.info(f'[PREPROCESS] 转换完成：{sum(v for k, v in stats.items() if k not in ["unchanged", "removed_numbering"])} 个段落已转换，{removed_numbering_count} 个编号前缀已删除')
+        stats['converted'] = converted_count
+        logging.info(f'[PREPROCESS] 转换完成：{converted_count} 个段落已转换，{removed_numbering_count} 个编号前缀已删除')
         return stats
 
     def _find_matching_style(self, style_name: str, text: str, rules: List[dict]) -> Optional[str]:
